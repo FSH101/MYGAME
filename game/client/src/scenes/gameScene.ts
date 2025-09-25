@@ -1,4 +1,4 @@
-import { Engine, Scene, Vector3, Color4, HemisphericLight, FreeCamera, MeshBuilder } from "@babylonjs/core";
+import { Scene, Vector3, Color4, HemisphericLight, MeshBuilder } from "@babylonjs/core";
 import { World } from "../ecs/world";
 import { updateRender } from "../systems/renderSystem";
 import { syncFromNetwork } from "../systems/networkSystem";
@@ -13,38 +13,30 @@ import type { IActions, ICharacterController, INetInputSink } from "../input/typ
 import { createSettingsStore } from "../input/settings";
 import { sendInput } from "../net/sendInput";
 import { setInventoryVisible } from "../ui/hud";
+import { initRenderer } from "../render/initRenderer";
+import type { RendererHandle } from "../render/initRenderer";
+import { ThirdPersonCamera } from "../camera/ThirdPersonCamera";
 
 export class GameScene {
-  private engine: Engine;
+  private renderer: RendererHandle;
   private scene: Scene;
-  private camera: FreeCamera;
   private light: HemisphericLight;
   private world = new World();
 
-  private canvas: HTMLCanvasElement;
-  private inputHandle: ReturnType<typeof createTouchInput> | null = null;
+  private cameraRig: ThirdPersonCamera;
+  private controller: LocalCharacterController;
+  private lastFrame = performance.now();
+  private hasInitialCamera = false;
 
   constructor(private container: HTMLElement) {
-    this.canvas = document.createElement("canvas");
-    this.canvas.setAttribute("id", "render-canvas");
-    this.canvas.style.width = "100%";
-    this.canvas.style.height = "100%";
-    this.canvas.style.touchAction = "none";
-    this.container.appendChild(this.canvas);
-
-    this.engine = new Engine(this.canvas, true, {
-      preserveDrawingBuffer: false,
-      stencil: false,
-      disableWebGL2Support: false,
+    this.renderer = initRenderer(this.container, {
+      onContextRestored: () => this.onContextRestored(),
     });
-    this.scene = new Scene(this.engine);
+    this.scene = new Scene(this.renderer.engine);
     this.scene.clearColor = new Color4(0.05, 0.08, 0.12, 1);
 
-    this.camera = new FreeCamera("camera", new Vector3(0, 8, -12), this.scene);
-    this.camera.attachControl(this.canvas, true);
-    this.camera.minZ = 0.1;
-    this.camera.maxZ = 2000;
-    this.camera.speed = 0;
+    this.cameraRig = new ThirdPersonCamera(this.scene);
+    this.controller = new LocalCharacterController(this.cameraRig);
 
     this.light = new HemisphericLight("sun", new Vector3(0.3, 1, 0.3), this.scene);
     this.light.intensity = 1.1;
@@ -54,15 +46,9 @@ export class GameScene {
 
     ensureHUD(container);
     this.setupTouchInput();
-
     this.setupNetwork();
 
-    this.engine.runRenderLoop(() => {
-      this.update();
-      this.scene.render();
-    });
-
-    window.addEventListener("resize", () => this.engine.resize());
+    this.renderer.start(() => this.renderFrame());
   }
 
   private generateTerrain(): void {
@@ -101,32 +87,7 @@ export class GameScene {
     });
   }
 
-  private update(): void {
-    syncFromNetwork(this.world);
-    updateRender(this.scene, this.world);
-    updateUI(this.world);
-    updateDayNight(this.scene, this.light);
-    this.followLocalPlayer();
-    trackFrame();
-  }
-
-  private followLocalPlayer(): void {
-    const players = this.world.query("player", "transform");
-    for (const entity of players) {
-      const player = this.world.get(entity, "player");
-      if (player?.local) {
-        const transform = this.world.get(entity, "transform");
-        if (!transform) continue;
-        const target = new Vector3(transform.position[0], transform.position[1] + 6, transform.position[2] + 12);
-        this.camera.position = Vector3.Lerp(this.camera.position, target, 0.1);
-        this.camera.setTarget(new Vector3(transform.position[0], transform.position[1] + 2, transform.position[2]));
-        break;
-      }
-    }
-  }
-
   private setupTouchInput(): void {
-    const controller = new LocalCharacterController();
     const actions: IActions = {
       attack: () => {},
       interact: () => {},
@@ -136,7 +97,53 @@ export class GameScene {
       sendInput: (frame) => sendInput(frame),
     };
     const settingsStore = createSettingsStore();
-    this.inputHandle = createTouchInput(this.container, controller, actions, sink, settingsStore);
+    createTouchInput(this.container, this.controller, actions, sink, settingsStore);
+  }
+
+  private renderFrame(): void {
+    const now = performance.now();
+    const dt = Math.max(0.001, (now - this.lastFrame) / 1000);
+    this.lastFrame = now;
+
+    this.update(dt);
+    this.scene.render();
+  }
+
+  private update(dt: number): void {
+    syncFromNetwork(this.world);
+    updateRender(this.scene, this.world);
+    updateUI(this.world);
+    updateDayNight(this.scene, this.light);
+    this.updateCamera(dt);
+    trackFrame();
+  }
+
+  private updateCamera(dt: number): void {
+    const players = this.world.query("player", "transform");
+    for (const entity of players) {
+      const player = this.world.get(entity, "player");
+      if (!player?.local) continue;
+      const transform = this.world.get(entity, "transform");
+      if (!transform) continue;
+      const targetPos = new Vector3(transform.position[0], transform.position[1], transform.position[2]);
+      if (!this.hasInitialCamera) {
+        this.cameraRig.setYaw(transform.rotation[1]);
+        this.hasInitialCamera = true;
+      }
+      this.cameraRig.update({
+        targetPosition: targetPos,
+        heading: transform.rotation[1],
+        moveMagnitude: this.controller.getMoveMagnitude(),
+        lookActive: this.controller.isLookActive(),
+        lastLookInputAt: this.controller.getLastLookInputAt(),
+        dt,
+      });
+      break;
+    }
+  }
+
+  private onContextRestored(): void {
+    this.scene.markAllMaterialsAsDirty(1);
   }
 }
 
@@ -146,16 +153,17 @@ function simplex(x: number, y: number): number {
 
 class LocalCharacterController implements ICharacterController {
   private move = { x: 0, z: 0 };
-  private sprint = false;
-  private yaw = 0;
-  private pitch = 0;
+  private lookActive = false;
+  private lastLookInputAt = performance.now();
+
+  constructor(private readonly camera: ThirdPersonCamera) {}
 
   setMoveVector(localXZ: { x: number; z: number }): void {
     this.move = localXZ;
   }
 
   setSprint(active: boolean): void {
-    this.sprint = active;
+    void active;
   }
 
   jump(): void {
@@ -171,10 +179,35 @@ class LocalCharacterController implements ICharacterController {
   }
 
   addYaw(deltaRadians: number): void {
-    this.yaw += deltaRadians;
+    if (deltaRadians !== 0) {
+      this.camera.addYaw(deltaRadians);
+      this.lastLookInputAt = performance.now();
+    }
   }
 
   addPitch(deltaRadians: number): void {
-    this.pitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, this.pitch + deltaRadians));
+    if (deltaRadians !== 0) {
+      this.camera.addPitch(deltaRadians);
+      this.lastLookInputAt = performance.now();
+    }
+  }
+
+  setLookActive(active: boolean): void {
+    this.lookActive = active;
+    if (!active) {
+      this.lastLookInputAt = performance.now();
+    }
+  }
+
+  getMoveMagnitude(): number {
+    return Math.hypot(this.move.x, this.move.z);
+  }
+
+  isLookActive(): boolean {
+    return this.lookActive;
+  }
+
+  getLastLookInputAt(): number {
+    return this.lastLookInputAt;
   }
 }

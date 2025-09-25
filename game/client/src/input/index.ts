@@ -124,6 +124,7 @@ export function createTouchInput(
       look.start(event.pointerId, event.clientX, event.clientY);
       lookPointer = event.pointerId;
       mgr.capture(event.pointerId, "look");
+      controller.setLookActive?.(true);
       event.preventDefault();
     }
   });
@@ -150,12 +151,35 @@ export function createTouchInput(
     } else if (role === "look" && lookPointer === event.pointerId) {
       look.stop(event.pointerId);
       lookPointer = null;
+      controller.setLookActive?.(false);
     }
   });
 
   const resizeHandler = () => updateLayout();
   window.addEventListener("resize", resizeHandler);
   window.addEventListener("orientationchange", resizeHandler);
+
+  const clearPointers = () => {
+    if (movePointer !== null) {
+      joystick.deactivate(movePointer);
+      movePointer = null;
+      composer.clearMovement();
+    }
+    if (lookPointer !== null) {
+      look.stop(lookPointer);
+      lookPointer = null;
+      controller.setLookActive?.(false);
+    }
+  };
+
+  const visibilityHandler = () => {
+    if (document.hidden) {
+      clearPointers();
+    }
+  };
+
+  window.addEventListener("blur", clearPointers);
+  document.addEventListener("visibilitychange", visibilityHandler);
 
   const keyDownHandler = (event: KeyboardEvent) => {
     if (event.repeat) return;
@@ -235,6 +259,8 @@ export function createTouchInput(
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resizeHandler);
       window.removeEventListener("orientationchange", resizeHandler);
+      window.removeEventListener("blur", clearPointers);
+      document.removeEventListener("visibilitychange", visibilityHandler);
       window.removeEventListener("keydown", keyDownHandler);
       window.removeEventListener("keyup", keyUpHandler);
       unsubscribe();

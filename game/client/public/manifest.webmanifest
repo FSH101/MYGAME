@@ -1,11 +1,11 @@
 {
   "name": "Wasteland: Survival",
   "short_name": "Wasteland",
-  "display": "standalone",
+  "display": "fullscreen",
   "start_url": ".",
   "background_color": "#0d0b0a",
   "theme_color": "#e0a740",
-  "orientation": "portrait-primary",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "/icons/icon-192.svg",

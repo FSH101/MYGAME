@@ -1,4 +1,5 @@
 import type { InputSettings, InputSettingsStore } from "./types";
+import { isMobileDevice } from "../shared/platform";
 
 const STORAGE_KEY = "wasteland-touch-settings";
 
@@ -14,6 +15,16 @@ const defaultSettings: InputSettings = {
   LeftHanded: false,
 };
 
+const mobileForced: Partial<InputSettings> = {
+  MoveDeadzonePx: 18,
+  MoveSprintThreshold: 0.78,
+  MoveCurve: "expo",
+  LookSensitivityADS: 0.5,
+  LookGamma: 0.84,
+  InvertY: false,
+  GyroAim: false,
+};
+
 export function createSettingsStore(): InputSettingsStore {
   let current = loadSettings();
   const listeners = new Set<(settings: InputSettings) => void>();
@@ -22,12 +33,25 @@ export function createSettingsStore(): InputSettingsStore {
     listeners.forEach((listener) => listener(current));
   }
 
+  const mobile = isMobileDevice();
+
   return {
     get() {
       return current;
     },
     update(patch) {
-      current = { ...current, ...patch };
+      if (mobile) {
+        const filtered: Partial<InputSettings> = {};
+        if (patch.LookSensitivity !== undefined) {
+          filtered.LookSensitivity = clamp(patch.LookSensitivity, 0.2, 2);
+        }
+        if (patch.LeftHanded !== undefined) {
+          filtered.LeftHanded = patch.LeftHanded;
+        }
+        current = applyMobilePreset({ ...current, ...filtered });
+      } else {
+        current = { ...current, ...patch };
+      }
       saveSettings(current);
       emit();
     },
@@ -44,10 +68,10 @@ function loadSettings(): InputSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...defaultSettings };
     const parsed = JSON.parse(raw) as Partial<InputSettings>;
-    return { ...defaultSettings, ...parsed };
+    return applyMobilePreset({ ...defaultSettings, ...parsed });
   } catch (error) {
     console.warn("Failed to load touch settings", error);
-    return { ...defaultSettings };
+    return applyMobilePreset({ ...defaultSettings });
   }
 }
 
@@ -60,3 +84,12 @@ function saveSettings(settings: InputSettings): void {
 }
 
 export { defaultSettings };
+
+function applyMobilePreset(settings: InputSettings): InputSettings {
+  if (!isMobileDevice()) return settings;
+  return { ...settings, ...mobileForced };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}

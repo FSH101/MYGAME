@@ -8,6 +8,7 @@ export interface ICharacterController {
   proneToggle(): void;
   addYaw(deltaRadians: number): void;
   addPitch(deltaRadians: number): void;
+  setLookActive?(active: boolean): void;
 }
 
 export interface IActions {
