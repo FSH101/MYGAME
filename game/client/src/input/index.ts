@@ -1,7 +1,7 @@
 import { TouchManager } from "./TouchManager";
 import { VirtualJoystick } from "./VirtualJoystick";
 import { LookController } from "./LookController";
-import { TouchButton } from "./Buttons";
+import { TouchButton } from "../ui/hud/Buttons";
 import { InputComposer } from "./InputComposer";
 import type {
   IActions,
@@ -50,7 +50,7 @@ export function createTouchInput(
       actions.openInventory(open);
       const button = buttons.get("inventory");
       if (button) {
-        button.element.classList.toggle("toggled", open);
+        button.setToggled(open);
       }
     },
   };
@@ -291,13 +291,13 @@ function createButtons(
     {
       id: "attack",
       label: "Удар",
-      anchor: { bottom: 6, right: 5 },
+      anchor: { bottom: 3, right: 3 },
       onHold: (active: boolean) => composer.setAttack(active),
     },
     {
       id: "jump",
       label: "Прыжок",
-      anchor: { bottom: 22, right: 9 },
+      anchor: { bottom: 16, right: 3 },
       onTap: () => {
         composer.queueJump();
         vibrate(10);
@@ -306,14 +306,14 @@ function createButtons(
     {
       id: "crouch",
       label: "Присесть",
-      anchor: { bottom: 24, right: 24 },
+      anchor: { bottom: 16, right: 18 },
       onTap: () => composer.queueCrouch(),
       onLongPress: () => composer.queueProne(),
     },
     {
       id: "interact",
       label: "Взаим.",
-      anchor: { right: 6, top: 45 },
+      anchor: { right: 3, top: 45 },
       onTap: () => {
         composer.queueInteract();
         vibrate(6);
@@ -322,7 +322,7 @@ function createButtons(
     {
       id: "inventory",
       label: "Инв.",
-      anchor: { top: 14, left: 8 },
+      anchor: { top: 8, left: 3 },
       toggle: true,
       onDown: onInventoryToggle,
     },
@@ -338,11 +338,11 @@ function createButtons(
 function computeLayout(settings: InputSettings): Record<string, { top?: number; bottom?: number; left?: number; right?: number }> {
   const isLandscape = window.innerWidth > window.innerHeight;
   const base = {
-    attack: isLandscape ? { bottom: 8, right: 6 } : { bottom: 6, right: 4 },
-    jump: isLandscape ? { bottom: 28, right: 10 } : { bottom: 22, right: 9 },
-    crouch: isLandscape ? { bottom: 34, right: 24 } : { bottom: 24, right: 24 },
-    interact: isLandscape ? { right: 10, top: 40 } : { right: 6, top: 45 },
-    inventory: isLandscape ? { top: 8, left: 8 } : { top: 14, left: 8 },
+    attack: isLandscape ? { bottom: 6, right: 4 } : { bottom: 3, right: 3 },
+    jump: isLandscape ? { bottom: 22, right: 6 } : { bottom: 16, right: 3 },
+    crouch: isLandscape ? { bottom: 22, right: 18 } : { bottom: 16, right: 18 },
+    interact: isLandscape ? { right: 6, top: 38 } : { right: 3, top: 45 },
+    inventory: isLandscape ? { top: 6, left: 6 } : { top: 8, left: 3 },
   } as const;
 
   if (settings.LeftHanded) {
@@ -393,28 +393,6 @@ function injectStyles(): void {
     background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8), rgba(120,180,255,0.4));
     box-shadow: 0 0 12px rgba(0, 0, 0, 0.35);
     pointer-events: none;
-  }
-  .touch-button {
-    pointer-events: auto;
-    border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.35);
-    background: rgba(30, 30, 30, 0.55);
-    color: #f4e3c2;
-    font-size: clamp(0.7rem, 2.4vw, 1rem);
-    width: clamp(62px, 17vw, 86px);
-    height: clamp(62px, 17vw, 86px);
-    backdrop-filter: blur(4px);
-  }
-  .touch-button::after {
-    content: "";
-    position: absolute;
-    inset: -8px;
-  }
-  .touch-button.active {
-    background: rgba(80, 160, 255, 0.65);
-  }
-  .touch-button.toggled {
-    background: rgba(255, 160, 80, 0.65);
   }
   `;
   document.head.appendChild(style);

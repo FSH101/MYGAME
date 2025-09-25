@@ -13,9 +13,10 @@ import type { IActions, ICharacterController, INetInputSink } from "../input/typ
 import { createSettingsStore } from "../input/settings";
 import { sendInput } from "../net/sendInput";
 import { setInventoryVisible } from "../ui/hud";
-import { initRenderer } from "../render/initRenderer";
 import type { RendererHandle } from "../render/initRenderer";
 import { ThirdPersonCamera } from "../camera/ThirdPersonCamera";
+
+type TouchHandle = ReturnType<typeof createTouchInput> | null;
 
 export class GameScene {
   private renderer: RendererHandle;
@@ -27,11 +28,11 @@ export class GameScene {
   private controller: LocalCharacterController;
   private lastFrame = performance.now();
   private hasInitialCamera = false;
+  private inputHandle: TouchHandle = null;
+  private networkReady = false;
 
-  constructor(private container: HTMLElement) {
-    this.renderer = initRenderer(this.container, {
-      onContextRestored: () => this.onContextRestored(),
-    });
+  constructor(private container: HTMLElement, renderer: RendererHandle) {
+    this.renderer = renderer;
     this.scene = new Scene(this.renderer.engine);
     this.scene.clearColor = new Color4(0.05, 0.08, 0.12, 1);
 
@@ -43,12 +44,34 @@ export class GameScene {
 
     this.generateTerrain();
     this.spawnLandmarks();
+  }
 
-    ensureHUD(container);
-    this.setupTouchInput();
+  initializeUI(): void {
+    ensureHUD(this.container);
+  }
+
+  initializeInput(): void {
+    if (this.inputHandle) return;
+    this.inputHandle = this.setupTouchInput();
+  }
+
+  initializeNetwork(): void {
+    if (this.networkReady) return;
     this.setupNetwork();
+    this.networkReady = true;
+  }
 
+  start(): void {
+    this.lastFrame = performance.now();
     this.renderer.start(() => this.renderFrame());
+  }
+
+  getScene(): Scene {
+    return this.scene;
+  }
+
+  handleContextRestored(): void {
+    this.scene.markAllMaterialsAsDirty(1);
   }
 
   private generateTerrain(): void {
@@ -87,7 +110,7 @@ export class GameScene {
     });
   }
 
-  private setupTouchInput(): void {
+  private setupTouchInput(): TouchHandle {
     const actions: IActions = {
       attack: () => {},
       interact: () => {},
@@ -97,7 +120,7 @@ export class GameScene {
       sendInput: (frame) => sendInput(frame),
     };
     const settingsStore = createSettingsStore();
-    createTouchInput(this.container, this.controller, actions, sink, settingsStore);
+    return createTouchInput(this.container, this.controller, actions, sink, settingsStore);
   }
 
   private renderFrame(): void {
@@ -142,8 +165,9 @@ export class GameScene {
     }
   }
 
-  private onContextRestored(): void {
-    this.scene.markAllMaterialsAsDirty(1);
+  dispose(): void {
+    this.renderer.stop();
+    this.inputHandle?.destroy();
   }
 }
 

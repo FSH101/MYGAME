@@ -2,30 +2,63 @@ import type { Scene, AbstractMesh } from "@babylonjs/core";
 import { Color3, MeshBuilder, StandardMaterial, Vector3 } from "@babylonjs/core";
 import type { World } from "../ecs/world";
 import type { TransformComponent, PlayerComponent, ResourceComponent, AIComponent, HeatComponent } from "../components";
+import { PlayerAvatar } from "../game/PlayerAvatar";
 
 const meshCache = new Map<number, AbstractMesh>();
-let playerMaterial: StandardMaterial | null = null;
-let otherMaterial: StandardMaterial | null = null;
 const resourceMaterials = new Map<string, StandardMaterial>();
 let heatMaterial: StandardMaterial | null = null;
+const playerCache = new Map<number, PlayerVisual>();
+
+interface PlayerVisual {
+  avatar: PlayerAvatar;
+  lastPosition: Vector3;
+  lastTimestamp: number;
+}
 
 export function updateRender(scene: Scene, world: World): void {
   const entities = world.query("transform");
   const seen = new Set<number>();
+  const seenPlayers = new Set<number>();
+  const now = performance.now();
+  const tempVec = new Vector3();
   for (const entity of entities) {
     const transform = world.get<TransformComponent>(entity, "transform");
     if (!transform) continue;
     seen.add(entity);
+    const player = world.get<PlayerComponent>(entity, "player");
+    if (player) {
+      seenPlayers.add(entity);
+      let visual = playerCache.get(entity);
+      if (!visual) {
+        const avatar = new PlayerAvatar(scene, { local: player.local });
+        visual = {
+          avatar,
+          lastPosition: new Vector3(transform.position[0], transform.position[1], transform.position[2]),
+          lastTimestamp: now,
+        };
+        playerCache.set(entity, visual);
+        void avatar.init();
+      }
+      visual.avatar.setLocal(player.local);
+      tempVec.set(transform.position[0], transform.position[1], transform.position[2]);
+      visual.avatar.setPosition(tempVec);
+      visual.avatar.setRotation(transform.rotation[1]);
+      const dt = Math.max(0.016, (now - visual.lastTimestamp) / 1000);
+      const distance = Vector3.Distance(tempVec, visual.lastPosition);
+      const speed = distance / dt;
+      visual.avatar.setMovementSpeed(speed);
+      visual.avatar.update();
+      visual.lastPosition.copyFrom(tempVec);
+      visual.lastTimestamp = now;
+      continue;
+    }
+
     let mesh = meshCache.get(entity);
     if (!mesh) {
-      const player = world.get<PlayerComponent>(entity, "player");
       const resource = world.get<ResourceComponent>(entity, "resource");
       const ai = world.get<AIComponent>(entity, "ai");
       const heat = world.get<HeatComponent>(entity, "heat");
-      if (player) {
-        mesh = MeshBuilder.CreateCapsule(`player_${entity}`, { radius: 0.4, height: 1.8 }, scene);
-        mesh.material = getPlayerMaterial(scene, player.local);
-      } else if (resource) {
+      if (resource) {
         mesh = MeshBuilder.CreateBox(`res_${entity}`, { size: 1 }, scene);
         mesh.material = getResourceMaterial(scene, resource.type);
       } else if (ai) {
@@ -56,21 +89,13 @@ export function updateRender(scene: Scene, world: World): void {
       meshCache.delete(entity);
     }
   }
-}
 
-function getPlayerMaterial(scene: Scene, local: boolean): StandardMaterial {
-  if (local) {
-    if (!playerMaterial) {
-      playerMaterial = new StandardMaterial("playerLocal", scene);
-      playerMaterial.diffuseColor = new Color3(0.4, 0.8, 0.9);
+  for (const [entity, visual] of playerCache.entries()) {
+    if (!seenPlayers.has(entity)) {
+      visual.avatar.dispose();
+      playerCache.delete(entity);
     }
-    return playerMaterial;
   }
-  if (!otherMaterial) {
-    otherMaterial = new StandardMaterial("playerRemote", scene);
-    otherMaterial.diffuseColor = new Color3(0.9, 0.6, 0.4);
-  }
-  return otherMaterial;
 }
 
 function getResourceMaterial(scene: Scene, type: string): StandardMaterial {
