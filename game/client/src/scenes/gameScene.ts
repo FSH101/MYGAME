@@ -17,8 +17,17 @@ export class GameScene {
   private light: HemisphericLight;
   private world = new World();
 
+  private canvas: HTMLCanvasElement;
+
   constructor(private container: HTMLElement) {
-    this.engine = new Engine(container, true, {
+    this.canvas = document.createElement("canvas");
+    this.canvas.setAttribute("id", "render-canvas");
+    this.canvas.style.width = "100%";
+    this.canvas.style.height = "100%";
+    this.canvas.style.touchAction = "none";
+    this.container.appendChild(this.canvas);
+
+    this.engine = new Engine(this.canvas, true, {
       preserveDrawingBuffer: false,
       stencil: false,
       disableWebGL2Support: false,
@@ -27,7 +36,7 @@ export class GameScene {
     this.scene.clearColor = new Color4(0.05, 0.08, 0.12, 1);
 
     this.camera = new FreeCamera("camera", new Vector3(0, 8, -12), this.scene);
-    this.camera.attachControl(container, true);
+    this.camera.attachControl(this.canvas, true);
     this.camera.minZ = 0.1;
     this.camera.maxZ = 2000;
     this.camera.speed = 0;
