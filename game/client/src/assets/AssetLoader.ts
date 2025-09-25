@@ -553,8 +553,18 @@ async function resolvePlayerAssetCandidates(): Promise<
     lowerIndex.set(file.toLowerCase(), file);
   }
 
-  const preferredGlb = lowerIndex.get("player.glb") ?? lowerIndex.get("assets/models/player.glb") ?? "player.glb";
-  addCandidate(preferredGlb);
+  const priority = [
+    "assets/models/Player.glb",
+    "Player.glb",
+    "assets/models/player.glb",
+    "player.glb",
+  ];
+  for (const name of priority) {
+    const resolved = lowerIndex.get(name.toLowerCase());
+    if (resolved) {
+      addCandidate(resolved);
+    }
+  }
 
   for (const file of manifestFiles) {
     addCandidate(file);

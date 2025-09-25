@@ -1,3 +1,4 @@
+import type { Engine } from "@babylonjs/core";
 import { TouchManager } from "./TouchManager";
 import { VirtualJoystick } from "./VirtualJoystick";
 import { LookController } from "./LookController";
@@ -17,6 +18,7 @@ interface TouchInputHandle {
 
 export function createTouchInput(
   container: HTMLElement,
+  engine: Engine,
   controller: ICharacterController,
   actions: IActions,
   sink: INetInputSink,
@@ -241,22 +243,21 @@ export function createTouchInput(
   window.addEventListener("keydown", keyDownHandler);
   window.addEventListener("keyup", keyUpHandler);
 
-  let lastTime = performance.now();
-  let rafId = 0;
-  const loop = (time: number) => {
-    const dt = (time - lastTime) / 1000;
-    lastTime = time;
-    composer.update(dt);
-    rafId = requestAnimationFrame(loop);
-  };
-  rafId = requestAnimationFrame(loop);
+  const engineObserver = engine.onBeginFrameObservable.add(() => {
+    const dt = engine.getDeltaTime() / 1000;
+    if (Number.isFinite(dt) && dt >= 0) {
+      composer.update(dt);
+    }
+  });
 
   const attackButton = buttons.get("attack");
   attackButton?.element.addEventListener("click", (event) => event.preventDefault());
 
   return {
     destroy() {
-      cancelAnimationFrame(rafId);
+      if (engineObserver) {
+        engine.onBeginFrameObservable.remove(engineObserver);
+      }
       window.removeEventListener("resize", resizeHandler);
       window.removeEventListener("orientationchange", resizeHandler);
       window.removeEventListener("blur", clearPointers);

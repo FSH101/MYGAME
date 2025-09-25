@@ -3,7 +3,6 @@ import { Color3, Mesh, MeshBuilder, Scene, StandardMaterial } from "@babylonjs/c
 const TERRAIN_SIZE = 500;
 const TERRAIN_SUBDIVISIONS = 80;
 const BASE_ELEVATION = 0;
-const WALKABLE_OFFSET = 0.92;
 
 export function createTerrain(scene: Scene): Mesh {
   const ground = MeshBuilder.CreateGround(
@@ -36,10 +35,6 @@ export function createTerrain(scene: Scene): Mesh {
 
 export function getTerrainHeight(x: number, z: number): number {
   return sampleTerrainHeight(x, z) + BASE_ELEVATION;
-}
-
-export function getWalkableHeight(x: number, z: number): number {
-  return getTerrainHeight(x, z) + WALKABLE_OFFSET;
 }
 
 function sampleTerrainHeight(x: number, z: number): number {

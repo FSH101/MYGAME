@@ -15,7 +15,7 @@ import { sendInput } from "../net/sendInput";
 import { setInventoryVisible } from "../ui/hud";
 import type { RendererHandle } from "../render/initRenderer";
 import { ThirdPersonCamera } from "../camera/ThirdPersonCamera";
-import { createTerrain, getTerrainHeight, getWalkableHeight } from "../terrain/terrain";
+import { createTerrain, getTerrainHeight } from "../terrain/terrain";
 
 type TouchHandle = ReturnType<typeof createTouchInput> | null;
 
@@ -82,7 +82,7 @@ export class GameScene {
       const z = (Math.random() - 0.5) * 400;
       const groundHeight = getTerrainHeight(x, z);
       rock.position = new Vector3(x, groundHeight + 2, z);
-      rock.checkCollisions = false;
+      rock.checkCollisions = true;
     }
     for (let i = 0; i < 3; i++) {
       const tower = MeshBuilder.CreateBox(`tower_${i}`, { width: 6, height: 24, depth: 6 }, this.scene);
@@ -90,7 +90,7 @@ export class GameScene {
       const z = (Math.random() - 0.5) * 300;
       const groundHeight = getTerrainHeight(x, z);
       tower.position = new Vector3(x, groundHeight + 12, z);
-      tower.checkCollisions = false;
+      tower.checkCollisions = true;
     }
   }
 
@@ -113,7 +113,14 @@ export class GameScene {
       sendInput: (frame) => sendInput(frame),
     };
     const settingsStore = createSettingsStore();
-    return createTouchInput(this.container, this.controller, actions, sink, settingsStore);
+    return createTouchInput(
+      this.container,
+      this.renderer.engine,
+      this.controller,
+      actions,
+      sink,
+      settingsStore,
+    );
   }
 
   private renderFrame(): void {
@@ -142,9 +149,9 @@ export class GameScene {
       const transform = this.world.get(entity, "transform");
       if (!transform) continue;
       const targetPos = new Vector3(transform.position[0], transform.position[1], transform.position[2]);
-      const walkableHeight = getWalkableHeight(targetPos.x, targetPos.z);
-      if (!Number.isNaN(walkableHeight) && (!Number.isFinite(targetPos.y) || targetPos.y < walkableHeight)) {
-        targetPos.y = walkableHeight;
+      const groundHeight = getTerrainHeight(targetPos.x, targetPos.z);
+      if (!Number.isNaN(groundHeight) && (!Number.isFinite(targetPos.y) || targetPos.y < groundHeight)) {
+        targetPos.y = groundHeight;
       }
       if (!this.hasInitialCamera) {
         this.cameraRig.setYaw(transform.rotation[1]);

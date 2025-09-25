@@ -2,7 +2,7 @@ import type { NetInputFrame } from "../shared/types";
 import type { IActions, ICharacterController, INetInputSink, InputSettings, MoveCurve } from "./types";
 
 const SEND_RATE = 1 / 15; // 15 Hz snapshots
-const MOVE_SMOOTH_RATE = 10.5;
+const MOVE_SMOOTH_RATE = 31.5;
 const LOOK_SMOOTH_RATE = 12.5;
 const MAX_FRAME_DT = 1 / 24; // clamp to ~41ms to stay in sync with refresh cycles
 
