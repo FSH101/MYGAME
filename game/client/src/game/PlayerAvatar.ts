@@ -11,6 +11,7 @@ import {
 import type { AnimationGroup } from "@babylonjs/core";
 import { disposeInstance, instantiateAsset } from "../assets/AssetLoader";
 import { logger } from "../core/Logger";
+import { getWalkableHeight } from "../terrain/terrain";
 
 const PLAYER_ASSET_KEY = "player";
 const RUN_THRESHOLD = 1.2;
@@ -67,6 +68,10 @@ export class PlayerAvatar {
   }
 
   setPosition(position: Vector3): void {
+    const walkableHeight = getWalkableHeight(position.x, position.z);
+    if (!Number.isNaN(walkableHeight)) {
+      position.y = Math.max(position.y, walkableHeight);
+    }
     this.root.position.copyFrom(position);
   }
 

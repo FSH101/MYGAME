@@ -1,9 +1,10 @@
-import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { writeFileSync, mkdirSync, existsSync, cpSync } from "node:fs";
+import { dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const outputPath = resolve(__dirname, "../client/public/assets/models/player.glb");
+const targetDir = resolve(__dirname, "../client/public/assets/models");
+const outputPath = resolve(targetDir, "player.glb");
 
 const COMPONENTS = {
   SCALAR: 1,
@@ -338,11 +339,48 @@ function generate() {
   binHeader.writeUInt32LE(binChunk.length, 0);
   binHeader.writeUInt32LE(0x004e4942, 4);
 
-  const glb = Buffer.concat([header, jsonHeader, jsonChunk, binHeader, binChunk]);
-
-  mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, glb);
-  console.log(`player.glb создан (${glb.length} байт)`);
+  return Buffer.concat([header, jsonHeader, jsonChunk, binHeader, binChunk]);
+}
+function syncExternalModels() {
+  mkdirSync(targetDir, { recursive: true });
+  const sources = [
+    resolve(__dirname, "../models"),
+    resolve(__dirname, "../../models"),
+  ];
+  let copied = false;
+  for (const source of sources) {
+    if (!existsSync(source)) {
+      continue;
+    }
+    if (relative(source, targetDir) === "") {
+      continue;
+    }
+    try {
+      cpSync(source, targetDir, { recursive: true, force: true });
+      copied = true;
+      console.log(`Скопированы пользовательские модели из ${relative(process.cwd(), source) || source}`);
+    } catch (error) {
+      console.warn(`Не удалось скопировать модели из ${source}`, error);
+    }
+  }
+  return copied;
 }
 
-generate();
+function main() {
+  const copied = syncExternalModels();
+  if (existsSync(outputPath)) {
+    if (copied) {
+      console.log("Обнаружен пользовательский player.glb, генерация заглушки пропущена");
+    } else {
+      console.log("player.glb уже существует, генерация заглушки не требуется");
+    }
+    return;
+  }
+
+  const glb = generate();
+  mkdirSync(targetDir, { recursive: true });
+  writeFileSync(outputPath, glb);
+  console.log(`Сгенерирован резервный player.glb (${glb.length} байт)`);
+}
+
+main();

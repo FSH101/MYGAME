@@ -27,6 +27,10 @@ export class ThirdPersonCamera {
     this.camera.inputs.clear();
     this.camera.minZ = 0.2;
     this.camera.maxZ = 2000;
+    this.camera.checkCollisions = true;
+    this.camera.applyGravity = false;
+    this.camera.ellipsoid = new Vector3(0.7, 1.4, 0.7);
+    this.camera.ellipsoidOffset = new Vector3(0, 1.2, 0);
     scene.activeCamera = this.camera;
   }
 
