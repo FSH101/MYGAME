@@ -1,5 +1,12 @@
 const CACHE_NAME = "wasteland-cache-v1";
-const STATIC_ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/offline.html"];
+const STATIC_ASSETS = [
+  "/",
+  "/index.html",
+  "/offline.html",
+  "/icons/icon-192.svg",
+  "/icons/icon-512.svg",
+  "/manifest.webmanifest",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

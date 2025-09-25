@@ -3,7 +3,8 @@ import fastifyStatic from "@fastify/static";
 import fastifyCors from "@fastify/cors";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import { createServer } from "http";
+import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { setupSocket } from "./net/socket.js";
 import { ServerSimulation } from "./sim/simulation.js";
 import { SERVER_TICK_RATE, SNAPSHOT_RATE } from "./shared/types.js";
@@ -12,20 +13,43 @@ const fastify = Fastify({ logger: true });
 
 await fastify.register(fastifyCors, { origin: true });
 
-const clientDist = join(process.cwd(), "client", "dist");
+const fileDir = fileURLToPath(new URL(".", import.meta.url));
+const clientDist = join(fileDir, "..", "..", "client", "dist");
+let spaIndex: string | null = null;
 if (existsSync(clientDist)) {
   await fastify.register(fastifyStatic, {
     root: clientDist,
     prefix: "/",
     decorateReply: false,
   });
+
+  try {
+    spaIndex = await readFile(join(clientDist, "index.html"), "utf8");
+  } catch (err) {
+    fastify.log.error({ err }, "Failed to preload index.html for SPA fallback");
+  }
+
+  fastify.setNotFoundHandler(async (request, reply) => {
+    if (
+      request.method === "GET" &&
+      request.headers.accept?.includes("text/html") &&
+      spaIndex
+    ) {
+      return reply.type("text/html").send(spaIndex);
+    }
+
+    return reply.code(404).send({ error: "Not Found" });
+  });
 }
 
 fastify.get("/health", async () => ({ ok: true }));
 
-const httpServer = createServer(fastify.server);
 const simulation = new ServerSimulation();
-const io = setupSocket(httpServer, simulation);
+
+const port = Number(process.env.PORT ?? 8080);
+await fastify.listen({ port, host: "0.0.0.0" });
+
+const io = setupSocket(fastify.server, simulation);
 
 let lastLog = Date.now();
 setInterval(() => {
@@ -43,6 +67,3 @@ setInterval(() => {
     socket.emit("message", snapshot);
   }
 }, 1000 / SNAPSHOT_RATE);
-
-const port = Number(process.env.PORT ?? 8080);
-await fastify.listen({ port, host: "0.0.0.0" });
