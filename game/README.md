@@ -32,6 +32,20 @@ npm install
 - `npm run docker:build` — сборка образа `wasteland-survival`
 - `npm run docker:run` — запуск контейнера (порт 8080)
 
+### Деплой на Render
+1. Запушьте репозиторий и создайте новый **Web Service** на [Render](https://render.com/).
+2. На шаге конфигурации укажите:
+   - **Root Directory:** `game`
+   - **Environment:** `Node`
+   - **Build Command:** `npm install && npm run build`
+   - **Start Command:** `npm run start`
+   - **Instance Type:** выберите `Starter` или выше (минимум 512 MB RAM).
+3. В разделе переменных окружения добавьте `NODE_VERSION=20` и при необходимости `NODE_ENV=production`.
+4. Включите WebSocket-поддержку (Render делает это автоматически для Web Service) и установите **Health Check Path** в `/health`.
+5. После первого деплоя убедитесь, что в логах видно успешную сборку клиента и сервера, затем откройте сгенерированный домен — клиент будет обслуживаться тем же сервисом, а WebSocket соединится по тому же хосту.
+
+> ⚙️ Альтернатива: импортируйте `render.yaml` из корня репозитория — Render автоматически создаст сервис с теми же настройками.
+
 ### Нагрузочное тестирование
 - `npm run test:load` — спавнит до 16 ботов (поведение прописано в `server/src/sim/bots.ts`). Параметр количества можно передать: `npm run test:load -- 12`.
 

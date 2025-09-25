@@ -9,6 +9,7 @@
     "dev:server": "tsx watch src/fastify.ts",
     "build:client": "cd client && vite build",
     "build:server": "cd server && tsc -p tsconfig.json",
+    "start": "node server/dist/fastify.js",
     "lint": "eslint \"client/src/**/*.{ts,tsx}\" \"server/src/**/*.ts\" \"shared/**/*.ts\"",
     "format": "prettier --write .",
     "docker:build": "docker build -f server/docker/Dockerfile -t wasteland-survival .",
