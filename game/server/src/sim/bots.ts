@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import { io } from "socket.io-client";
 import type { ClientMessage } from "../shared/types.js";
 
@@ -21,11 +22,18 @@ for (let i = 0; i < BOT_COUNT; i++) {
   const sendInput = () => {
     const input: ClientMessage = {
       op: "input",
-      at: Date.now(),
       seq: seq++,
-      move: [Math.sin(seq / 20), Math.cos(seq / 40)],
-      look: [Math.sin(seq / 10) * 5, 0],
-      actions: { jump: false, hit: seq % 50 === 0, interact: seq % 30 === 0, inventory: false },
+      t: performance.now(),
+      mv: { x: Math.sin(seq / 25) * 0.6, z: Math.cos(seq / 32) * 0.8 },
+      sp: seq % 40 < 20 ? 1 : 0,
+      yaw: Math.sin(seq / 15) * 0.01,
+      pitch: 0,
+      atk: seq % 50 === 0 ? 1 : 0,
+      jmp: 0,
+      cr: 0,
+      pr: 0,
+      inr: seq % 80 === 0 ? 1 : 0,
+      inv: 0,
     };
     socket.emit("input", input);
   };

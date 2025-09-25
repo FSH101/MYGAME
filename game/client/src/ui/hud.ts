@@ -1,6 +1,4 @@
 import type { Stats, InventoryState, Recipe } from "../shared/types";
-import { triggerAction } from "../systems/inputSystem";
-
 interface HUDRefs {
   hp: HTMLDivElement;
   hunger: HTMLDivElement;
@@ -19,22 +17,19 @@ export function createHUD(container: HTMLElement): void {
   root.className = "hud";
   root.innerHTML = `
     <style>
-      .hud { position: absolute; inset: 0; pointer-events: none; font-family: 'Segoe UI', sans-serif; color: #f4e3c2; }
+      .hud { position: absolute; inset: 0; pointer-events: none; font-family: 'Segoe UI', sans-serif; color: #f4e3c2; z-index: 10; }
       .hud .bars { position: absolute; top: 1.5rem; left: 1rem; width: 40vw; max-width: 260px; display: grid; gap: 0.4rem; }
       .hud .bar { height: 12px; background: rgba(255,255,255,0.1); border-radius: 8px; overflow: hidden; }
       .hud .bar span { display: block; height: 100%; border-radius: 8px; transition: width 0.2s ease; }
       .hud .temperature { position: absolute; top: 1.5rem; right: 1rem; font-size: 1rem; }
-      .hud .actions { position: absolute; bottom: 2.5rem; right: 1rem; display: flex; flex-direction: column; gap: 0.75rem; pointer-events: auto; }
-      .hud button { width: 72px; height: 72px; border-radius: 50%; background: rgba(30,30,30,0.6); border: 2px solid rgba(255,255,255,0.3); color: #f4e3c2; font-size: 0.75rem; }
-      .hud .joystick { position: absolute; bottom: 2.5rem; left: 1.5rem; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.08); pointer-events: none; border: 2px solid rgba(255,255,255,0.1); }
       .hud .crafting { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); width: 90vw; max-width: 420px; background: rgba(0,0,0,0.7); border-radius: 16px; padding: 1rem; pointer-events: auto; display: none; }
       .hud .crafting h2 { margin: 0 0 0.6rem 0; font-size: 1rem; }
       .hud .crafting .recipes { display: grid; gap: 0.6rem; max-height: 200px; overflow-y: auto; }
       .hud .crafting .recipe { display: flex; justify-content: space-between; align-items: center; }
-      .hud .inventory { position: absolute; bottom: 10rem; left: 50%; transform: translateX(-50%); width: 90vw; max-width: 420px; background: rgba(0,0,0,0.65); padding: 0.6rem; border-radius: 12px; display: grid; gap: 0.4rem; grid-template-columns: repeat(5, minmax(0, 1fr)); pointer-events: auto; }
+      .hud .inventory { position: absolute; bottom: 10rem; left: 50%; transform: translateX(-50%); width: 90vw; max-width: 420px; background: rgba(0,0,0,0.65); padding: 0.6rem; border-radius: 12px; display: grid; gap: 0.4rem; grid-template-columns: repeat(5, minmax(0, 1fr)); pointer-events: auto; transition: opacity 0.25s ease; }
+      .hud .inventory.hidden { opacity: 0; pointer-events: none; }
       .hud .slot { aspect-ratio: 1; background: rgba(255,255,255,0.05); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; }
       @media (min-width: 768px) {
-        .hud button { width: 84px; height: 84px; font-size: 0.8rem; }
         .hud .bars { width: 300px; }
       }
     </style>
@@ -45,13 +40,6 @@ export function createHUD(container: HTMLElement): void {
       <div class="bar"><span class="stamina" style="background:#b3f957;width:100%"></span></div>
     </div>
     <div class="temperature">Temp: <span class="temp-value">0°C</span></div>
-    <div class="joystick"></div>
-    <div class="actions">
-      <button data-action="jump">Прыжок</button>
-      <button data-action="hit">Удар</button>
-      <button data-action="interact">Взаим.</button>
-      <button data-action="inventory">Инвентарь</button>
-    </div>
     <div class="inventory"></div>
     <div class="crafting">
       <h2>Крафт</h2>
@@ -69,14 +57,6 @@ export function createHUD(container: HTMLElement): void {
     craftingList: root.querySelector<HTMLDivElement>(".recipes")!,
     inventory: root.querySelector<HTMLDivElement>(".inventory")!,
   };
-
-  root.querySelectorAll("button[data-action]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const action = btn.getAttribute("data-action");
-      if (!action) return;
-      triggerAction(action as any);
-    });
-  });
 }
 
 export function updateHUD(stats: Stats, temperature: number, inventory: InventoryState): void {
@@ -117,4 +97,8 @@ export function toggleCrafting(open: boolean): void {
   if (panel) {
     panel.style.display = open ? "block" : "none";
   }
+}
+
+export function setInventoryVisible(open: boolean): void {
+  refs?.inventory.classList.toggle("hidden", !open);
 }

@@ -45,18 +45,25 @@ export const SNAPSHOT_RATE = 10;
 export const PLAYER_RADIUS = 0.4;
 export const WORLD_SIZE = 500;
 
-export interface InputMessage {
+export type BinaryFlag = 0 | 1;
+
+export interface NetInputFrame {
+  t: number; // local time in ms when frame captured
+  mv: { x: number; z: number };
+  sp: BinaryFlag;
+  yaw: number;
+  pitch: number;
+  atk: BinaryFlag;
+  jmp: BinaryFlag;
+  cr: BinaryFlag;
+  pr: BinaryFlag;
+  inr: BinaryFlag;
+  inv: BinaryFlag;
+}
+
+export interface InputMessage extends NetInputFrame {
   op: "input";
-  at: number;
   seq: number;
-  move: Vec2;
-  look: Vec2;
-  actions: {
-    jump: boolean;
-    hit: boolean;
-    interact: boolean;
-    inventory: boolean;
-  };
 }
 
 export interface JoinMessage {

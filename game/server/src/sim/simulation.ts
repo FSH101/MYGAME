@@ -15,6 +15,7 @@ import type {
   AIComponent,
   HeatSourceComponent,
   CraftingStationComponent,
+  PlayerInputState,
 } from "../ecs/components.js";
 import {
   Simulation,
@@ -38,6 +39,7 @@ const PLAYER_RESPAWN = 10;
 const STATS_DECAY = 0.01;
 const THIRST_TEMP_BONUS = 0.015;
 const STAMINA_REGEN = 5;
+const STAMINA_SPRINT_DRAIN = 9;
 const HIT_COOLDOWN = 0.8;
 const DAMAGE_SPEAR = 28;
 const DAMAGE_KNIFE = 20;
@@ -163,14 +165,20 @@ export class ServerSimulation {
     this.regenerateResources(world, dt);
   }
 
-  private emptyInput(): InputMessage {
+  private emptyInput(): PlayerInputState {
     return {
-      op: "input",
-      at: 0,
       seq: 0,
-      move: [0, 0],
-      look: [0, 0],
-      actions: { jump: false, hit: false, interact: false, inventory: false },
+      t: 0,
+      mv: { x: 0, z: 0 },
+      sp: 0,
+      yaw: 0,
+      pitch: 0,
+      atk: 0,
+      jmp: 0,
+      cr: 0,
+      pr: 0,
+      inr: 0,
+      inv: 0,
     };
   }
 
@@ -187,7 +195,10 @@ export class ServerSimulation {
 
       const buffer = this.inputs.get(socketId);
       if (buffer && buffer.pending.length > 0) {
-        player.input = buffer.pending[buffer.pending.length - 1];
+        const latest = buffer.pending[buffer.pending.length - 1];
+        const { op: _op, ...rest } = latest;
+        void _op;
+        player.input = { ...rest };
         buffer.pending = [];
       }
 
@@ -203,13 +214,13 @@ export class ServerSimulation {
         continue;
       }
 
-      const move = player.input.move;
-      const speed = player.stats.stamina > 40 ? SPRINT_SPEED : PLAYER_SPEED;
+      const move = player.input.mv;
+      const speed = player.input.sp ? SPRINT_SPEED : PLAYER_SPEED;
       const forward: Vec3 = [Math.sin(transform.rotation[1]), 0, Math.cos(transform.rotation[1])];
       const right: Vec3 = [forward[2], 0, -forward[0]];
       const desired: Vec3 = [0, 0, 0];
-      desired[0] = forward[0] * move[1] + right[0] * move[0];
-      desired[2] = forward[2] * move[1] + right[2] * move[0];
+      desired[0] = forward[0] * move.z + right[0] * move.x;
+      desired[2] = forward[2] * move.z + right[2] * move.x;
       const mag = Math.hypot(desired[0], desired[2]);
       if (mag > 1e-3) {
         desired[0] /= mag;
@@ -219,9 +230,10 @@ export class ServerSimulation {
       physics.velocity[2] = desired[2] * speed;
 
       physics.velocity[1] += GRAVITY * dt;
-      if (player.input.actions.jump && physics.grounded) {
+      if (player.input.jmp && physics.grounded) {
         physics.velocity[1] = JUMP_SPEED;
         physics.grounded = false;
+        player.input.jmp = 0;
       }
 
       transform.position[0] = clamp(transform.position[0] + physics.velocity[0] * dt, -WORLD_SIZE / 2, WORLD_SIZE / 2);
@@ -232,7 +244,9 @@ export class ServerSimulation {
         physics.velocity[1] = 0;
       }
 
-      transform.rotation[1] += player.input.look[0] * 0.0025;
+      transform.rotation[1] += player.input.yaw;
+      player.input.yaw = 0;
+      player.input.pitch = 0;
 
       this.handleStats(player, dt);
       this.handleInteractions(entity, player, transform);
@@ -243,7 +257,9 @@ export class ServerSimulation {
     const thirstDrain = STATS_DECAY + (this.sim.temperature - 25) * THIRST_TEMP_BONUS * dt;
     player.stats.thirst = clamp(player.stats.thirst - thirstDrain, 0, 100);
     player.stats.hunger = clamp(player.stats.hunger - STATS_DECAY * dt, 0, 100);
-    if (player.stats.stamina < 100) {
+    if (player.input.sp && player.stats.stamina > 0) {
+      player.stats.stamina = clamp(player.stats.stamina - STAMINA_SPRINT_DRAIN * dt, 0, 100);
+    } else if (player.stats.stamina < 100) {
       player.stats.stamina = clamp(player.stats.stamina + STAMINA_REGEN * dt, 0, 100);
     }
     if (player.stats.thirst <= 0 || player.stats.hunger <= 0) {
@@ -262,7 +278,7 @@ export class ServerSimulation {
   private handleInteractions(entity: number, player: PlayerComponent, transform: TransformComponent): void {
     const world = this.sim.world;
     const input = player.input;
-    if (input.actions.hit) {
+    if (input.atk) {
       const key = player.id;
       const last = this.lastHit.get(key) ?? 0;
       if (this.sim.tick - last > HIT_COOLDOWN * SERVER_TICK_RATE) {
@@ -270,7 +286,7 @@ export class ServerSimulation {
         this.lastHit.set(key, this.sim.tick);
       }
     }
-    if (input.actions.interact) {
+    if (input.inr) {
       const resources = world.query("resource", "transform");
       for (const res of resources) {
         const resource = world.getComponent<ResourceComponent>(res, "resource")!;
@@ -285,6 +301,7 @@ export class ServerSimulation {
           break;
         }
       }
+      input.inr = 0;
     }
   }
 

@@ -1,4 +1,4 @@
-import type { Vec2, Vec3, Stats, ResourceType, CraftItem } from "../shared/types.js";
+import type { Vec3, Stats, ResourceType, CraftItem, NetInputFrame } from "../shared/types.js";
 
 export interface TransformComponent {
   position: Vec3;
@@ -55,16 +55,8 @@ export interface InventorySlot {
   count: number;
 }
 
-export interface PlayerInputState {
+export interface PlayerInputState extends NetInputFrame {
   seq: number;
-  move: Vec2;
-  look: Vec2;
-  actions: {
-    jump: boolean;
-    hit: boolean;
-    interact: boolean;
-    inventory: boolean;
-  };
 }
 
 export interface NetworkComponent {

@@ -1,6 +1,5 @@
 import { Engine, Scene, Vector3, Color4, HemisphericLight, FreeCamera, MeshBuilder } from "@babylonjs/core";
 import { World } from "../ecs/world";
-import { setupInput, updateInput } from "../systems/inputSystem";
 import { updateRender } from "../systems/renderSystem";
 import { syncFromNetwork } from "../systems/networkSystem";
 import { ensureHUD, updateUI } from "../systems/uiSystem";
@@ -9,6 +8,11 @@ import { setSnapshot } from "../net/state";
 import type { ServerMessage } from "../shared/types";
 import { updateDayNight } from "../systems/dayNightSystem";
 import { trackFrame } from "../systems/metricsSystem";
+import { createTouchInput } from "../input";
+import type { IActions, ICharacterController, INetInputSink } from "../input/types";
+import { createSettingsStore } from "../input/settings";
+import { sendInput } from "../net/sendInput";
+import { setInventoryVisible } from "../ui/hud";
 
 export class GameScene {
   private engine: Engine;
@@ -18,6 +22,7 @@ export class GameScene {
   private world = new World();
 
   private canvas: HTMLCanvasElement;
+  private inputHandle: ReturnType<typeof createTouchInput> | null = null;
 
   constructor(private container: HTMLElement) {
     this.canvas = document.createElement("canvas");
@@ -48,7 +53,7 @@ export class GameScene {
     this.spawnLandmarks();
 
     ensureHUD(container);
-    setupInput(container);
+    this.setupTouchInput();
 
     this.setupNetwork();
 
@@ -99,7 +104,6 @@ export class GameScene {
   private update(): void {
     syncFromNetwork(this.world);
     updateRender(this.scene, this.world);
-    updateInput();
     updateUI(this.world);
     updateDayNight(this.scene, this.light);
     this.followLocalPlayer();
@@ -120,8 +124,57 @@ export class GameScene {
       }
     }
   }
+
+  private setupTouchInput(): void {
+    const controller = new LocalCharacterController();
+    const actions: IActions = {
+      attack: () => {},
+      interact: () => {},
+      openInventory: (open) => setInventoryVisible(open),
+    };
+    const sink: INetInputSink = {
+      sendInput: (frame) => sendInput(frame),
+    };
+    const settingsStore = createSettingsStore();
+    this.inputHandle = createTouchInput(this.container, controller, actions, sink, settingsStore);
+  }
 }
 
 function simplex(x: number, y: number): number {
   return (Math.sin(x * 1.3 + Math.cos(y * 1.7)) + Math.sin(y * 1.9)) * 0.5;
+}
+
+class LocalCharacterController implements ICharacterController {
+  private move = { x: 0, z: 0 };
+  private sprint = false;
+  private yaw = 0;
+  private pitch = 0;
+
+  setMoveVector(localXZ: { x: number; z: number }): void {
+    this.move = localXZ;
+  }
+
+  setSprint(active: boolean): void {
+    this.sprint = active;
+  }
+
+  jump(): void {
+    // placeholder for local feedback (animation hook)
+  }
+
+  crouchToggle(): void {
+    // placeholder for local feedback
+  }
+
+  proneToggle(): void {
+    // placeholder for local feedback
+  }
+
+  addYaw(deltaRadians: number): void {
+    this.yaw += deltaRadians;
+  }
+
+  addPitch(deltaRadians: number): void {
+    this.pitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, this.pitch + deltaRadians));
+  }
 }
