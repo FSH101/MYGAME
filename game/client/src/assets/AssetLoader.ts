@@ -376,14 +376,53 @@ async function loadGlbFallback(scene: Scene, directories: string[], baseName: st
 }
 
 function getCandidateDirectories(directory: string): string[] {
-  const normalized = normalizeDirectory(directory);
   const directories = new Set<string>();
-  directories.add(normalized);
-  if (normalized.includes("/assets/models/")) {
-    directories.add("/models/");
-    directories.add("/assets/models/");
-    directories.add(normalizeDirectory(normalized.replace("/assets/models/", "/models/")));
+  const variants = new Set<string>();
+
+  const normalized = normalizeDirectory(directory);
+  variants.add(normalized);
+
+  if (typeof window !== "undefined") {
+    try {
+      const base = document.baseURI ?? window.location.href;
+      const absolute = new URL(directory || "./", base).pathname;
+      variants.add(normalizeDirectory(absolute));
+    } catch (error) {
+      logger.warn("Не удалось вычислить абсолютный путь для ассетов", error);
+    }
   }
+
+  for (const variant of variants) {
+    const cleaned = variant.replace(/\\/g, "/");
+    const normalizedVariant = normalizeDirectory(cleaned);
+    if (normalizedVariant) {
+      directories.add(normalizedVariant);
+    }
+
+    const withoutLeadingSlash = cleaned.replace(/^\/+/, "");
+    if (withoutLeadingSlash) {
+      directories.add(normalizeDirectory(withoutLeadingSlash));
+      directories.add(normalizeDirectory(`/${withoutLeadingSlash}`));
+    }
+  }
+
+  const additional = new Set<string>();
+  for (const dir of directories) {
+    const stripped = dir.replace(/^\/+/, "");
+    if (stripped.includes("assets/models/")) {
+      const alternate = stripped.replace("assets/models/", "models/");
+      additional.add(alternate);
+      additional.add(`/${alternate}`);
+    }
+  }
+
+  for (const dir of additional) {
+    const normalizedDir = normalizeDirectory(dir);
+    if (normalizedDir) {
+      directories.add(normalizedDir);
+    }
+  }
+
   return Array.from(directories);
 }
 
