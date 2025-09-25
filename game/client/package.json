@@ -1,0 +1,25 @@
+{
+  "name": "wasteland-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@babylonjs/core": "^6.40.0",
+    "@babylonjs/loaders": "^6.40.0",
+    "@babylonjs/materials": "^6.40.0",
+    "@lukeed/uuid": "^2.0.1",
+    "babylonjs-gui": "^6.40.0",
+    "cannon-es": "^0.20.0",
+    "socket.io-client": "^4.7.5",
+    "three": "^0.164.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vite": "^5.2.0"
+  }
+}
