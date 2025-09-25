@@ -1,4 +1,4 @@
-import type { InventoryState } from "../shared/types";
+import type { InventoryState } from "../shared/types.js";
 
 interface PlayerRecord {
   id: string;

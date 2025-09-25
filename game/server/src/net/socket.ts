@@ -1,7 +1,7 @@
 import { Server as IOServer } from "socket.io";
 import type { Server } from "http";
-import type { ServerSimulation } from "../sim/simulation";
-import type { InputMessage, ClientMessage } from "../shared/types";
+import type { ServerSimulation } from "../sim/simulation.js";
+import type { InputMessage, ClientMessage } from "../shared/types.js";
 
 export function setupSocket(server: Server, sim: ServerSimulation): IOServer {
   const io = new IOServer(server, {

@@ -1,5 +1,5 @@
 import { io } from "socket.io-client";
-import type { ClientMessage } from "../shared/types";
+import type { ClientMessage } from "../shared/types.js";
 
 const BOT_COUNT = Number(process.argv[2] ?? 16);
 const URL = process.env.BOT_URL ?? "ws://localhost:8080";

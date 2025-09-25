@@ -1,5 +1,5 @@
-import { WORLD_SIZE, type SnapshotMessage, type Vec3, type PlayerState } from "../shared/types";
-import type { World } from "../ecs/world";
+import { WORLD_SIZE, type SnapshotMessage, type Vec3, type PlayerState } from "../shared/types.js";
+import type { World } from "../ecs/world.js";
 import type {
   TransformComponent,
   PlayerComponent,
@@ -7,7 +7,7 @@ import type {
   DamageableComponent,
   HeatSourceComponent,
   AIComponent,
-} from "../ecs/components";
+} from "../ecs/components.js";
 import { randomUUID } from "crypto";
 
 export interface Simulation {

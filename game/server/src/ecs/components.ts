@@ -1,4 +1,4 @@
-import type { Vec2, Vec3, Stats, ResourceType, CraftItem } from "../shared/types";
+import type { Vec2, Vec3, Stats, ResourceType, CraftItem } from "../shared/types.js";
 
 export interface TransformComponent {
   position: Vec3;

@@ -4,8 +4,8 @@ import {
   type SnapshotMessage,
   type Vec3,
   SERVER_TICK_RATE,
-} from "../shared/types";
-import { World } from "../ecs/world";
+} from "../shared/types.js";
+import { World } from "../ecs/world.js";
 import type {
   TransformComponent,
   PlayerComponent,
@@ -15,7 +15,7 @@ import type {
   AIComponent,
   HeatSourceComponent,
   CraftingStationComponent,
-} from "../ecs/components";
+} from "../ecs/components.js";
 import {
   Simulation,
   updateEnvironment,
@@ -23,8 +23,8 @@ import {
   spawnPoint,
   clamp,
   createPlayerId,
-} from "./world";
-import { RECIPES, type CraftItem, type ResourceType, INVENTORY_SLOT_COUNT } from "../shared/types";
+} from "./world.js";
+import { RECIPES, type CraftItem, type ResourceType, INVENTORY_SLOT_COUNT } from "../shared/types.js";
 
 const JUMP_SPEED = 6;
 const GRAVITY = -18;

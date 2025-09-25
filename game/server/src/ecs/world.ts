@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { Entity } from "./components";
+import type { Entity } from "./components.js";
 
 export interface ComponentStore<T> {
   data: Map<Entity, T>;

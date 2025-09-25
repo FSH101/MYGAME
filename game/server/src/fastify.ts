@@ -4,9 +4,9 @@ import fastifyCors from "@fastify/cors";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { createServer } from "http";
-import { setupSocket } from "./net/socket";
-import { ServerSimulation } from "./sim/simulation";
-import { SERVER_TICK_RATE, SNAPSHOT_RATE } from "./shared/types";
+import { setupSocket } from "./net/socket.js";
+import { ServerSimulation } from "./sim/simulation.js";
+import { SERVER_TICK_RATE, SNAPSHOT_RATE } from "./shared/types.js";
 
 const fastify = Fastify({ logger: true });
 
