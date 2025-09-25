@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: wasteland-survival
+    env: node
+    rootDir: game
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    plan: starter
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /health
