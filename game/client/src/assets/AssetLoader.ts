@@ -63,17 +63,8 @@ export async function loadAssets(
   for (const descriptor of descriptors) {
     if (!assetTemplates.has(descriptor.key)) {
       try {
-        if (descriptor.type === "gltf") {
-          const { rootUrl, fileName } = splitUrl(descriptor.url);
-          const container = await SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene);
-          assetTemplates.set(descriptor.key, container);
-        } else if (descriptor.type === "fbx") {
-          const container = await loadFBXTemplate(scene, descriptor.url);
-          assetTemplates.set(descriptor.key, container);
-        } else if (descriptor.type === "max") {
-          const container = await loadMaxTemplate(scene, descriptor.url);
-          assetTemplates.set(descriptor.key, container);
-        }
+        const container = await loadAssetContainer(scene, descriptor);
+        assetTemplates.set(descriptor.key, container);
       } catch (error) {
         logger.warn(`Не удалось загрузить ассет ${descriptor.url}`, error);
         assetTemplates.set(descriptor.key, createFailedContainer(scene, descriptor));
@@ -82,6 +73,49 @@ export async function loadAssets(
     completed += 1;
     onProgress?.(completed / descriptors.length);
   }
+}
+
+export async function loadPlayerAsset(scene: Scene, onProgress?: (fraction: number) => void): Promise<void> {
+  const key = "player";
+  if (assetTemplates.has(key)) {
+    onProgress?.(1);
+    return;
+  }
+
+  const candidates = await resolvePlayerAssetCandidates();
+  if (candidates.length === 0) {
+    logger.warn("Манифест моделей пуст, используется заглушка игрока");
+    assetTemplates.set(key, createFailedContainer(scene, { key, type: "gltf", url: "assets/models/player.glb" }));
+    onProgress?.(1);
+    return;
+  }
+
+  let lastError: unknown = null;
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    const descriptor: AssetDescriptor = { key, type: candidate.type, url: candidate.url };
+    try {
+      const container = await loadAssetContainer(scene, descriptor);
+      assetTemplates.set(key, container);
+      if (i === 0) {
+        logger.info(`Модель игрока загружена из ${candidate.url}`);
+      } else {
+        logger.info(`Модель игрока успешно загружена после ${i} неудачных попыток из ${candidate.url}`);
+      }
+      onProgress?.(1);
+      return;
+    } catch (error) {
+      lastError = error;
+      logger.warn(`Не удалось загрузить модель игрока из ${candidate.url}`, error);
+      const progress = (i + 1) / candidates.length;
+      onProgress?.(progress);
+    }
+  }
+
+  const fallbackUrl = candidates[0]?.url ?? "assets/models/player.glb";
+  assetTemplates.set(key, createFailedContainer(scene, { key, type: "gltf", url: fallbackUrl }));
+  logger.error("Все кандидаты моделей игрока отклонены, используется капсула", lastError);
+  onProgress?.(1);
 }
 
 export function instantiateAsset(key: string, parent: TransformNode): AssetContainer {
@@ -131,6 +165,20 @@ function splitUrl(url: string): { rootUrl: string; fileName: string } {
   const rootUrl = url.slice(0, idx + 1);
   const fileName = url.slice(idx + 1);
   return { rootUrl, fileName };
+}
+
+async function loadAssetContainer(scene: Scene, descriptor: AssetDescriptor): Promise<AssetContainer> {
+  if (descriptor.type === "gltf") {
+    const { rootUrl, fileName } = splitUrl(descriptor.url);
+    return await SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene);
+  }
+  if (descriptor.type === "fbx") {
+    return await loadFBXTemplate(scene, descriptor.url);
+  }
+  if (descriptor.type === "max") {
+    return await loadMaxTemplate(scene, descriptor.url);
+  }
+  throw new Error(`Unsupported asset type: ${descriptor.type}`);
 }
 
 async function loadFBXTemplate(scene: Scene, url: string): Promise<AssetContainer> {
@@ -487,4 +535,101 @@ function createFailedContainer(scene: Scene, descriptor: AssetDescriptor): Asset
     url: descriptor.url,
   };
   return container;
+}
+
+type PlayerManifest = { files?: unknown };
+
+let playerManifestPromise: Promise<string[]> | null = null;
+
+async function resolvePlayerAssetCandidates(): Promise<
+  Array<{ url: string; type: AssetDescriptor["type"] }>
+> {
+  const manifestFiles = await loadPlayerManifest();
+  const seen = new Set<string>();
+  const candidates: Array<{ url: string; type: AssetDescriptor["type"] }> = [];
+
+  const lowerIndex = new Map<string, string>();
+  for (const file of manifestFiles) {
+    lowerIndex.set(file.toLowerCase(), file);
+  }
+
+  const preferredGlb = lowerIndex.get("player.glb") ?? lowerIndex.get("assets/models/player.glb") ?? "player.glb";
+  addCandidate(preferredGlb);
+
+  for (const file of manifestFiles) {
+    addCandidate(file);
+  }
+
+  const fallbackNames = ["Player.glb", "player.gltf", "Player.gltf", "player.fbx", "Player.fbx", "player.max", "Player.max"];
+  for (const name of fallbackNames) {
+    addCandidate(name);
+  }
+
+  return candidates;
+
+  function addCandidate(file: string): void {
+    const descriptorType = getDescriptorType(file);
+    if (!descriptorType) {
+      return;
+    }
+    const url = normalizeModelUrl(file);
+    const key = `${descriptorType}:${url.toLowerCase()}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    candidates.push({ url, type: descriptorType });
+  }
+}
+
+async function loadPlayerManifest(): Promise<string[]> {
+  if (!playerManifestPromise) {
+    playerManifestPromise = (async () => {
+      try {
+        const response = await fetch("assets/models/manifest.json", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} ${response.statusText}`);
+        }
+        const json = (await response.json()) as PlayerManifest;
+        if (!json || typeof json !== "object" || !Array.isArray(json.files)) {
+          throw new Error("Некорректный формат manifest.json");
+        }
+        return json.files
+          .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+          .filter((entry): entry is string => entry.length > 0);
+      } catch (error) {
+        logger.warn("Не удалось загрузить манифест моделей, используется резервный список", error);
+        return [];
+      }
+    })();
+  }
+  return playerManifestPromise;
+}
+
+function getDescriptorType(file: string): AssetDescriptor["type"] | null {
+  const normalized = file.toLowerCase();
+  if (normalized.endsWith(".glb") || normalized.endsWith(".gltf")) {
+    return "gltf";
+  }
+  if (normalized.endsWith(".fbx")) {
+    return "fbx";
+  }
+  if (normalized.endsWith(".max")) {
+    return "max";
+  }
+  return null;
+}
+
+function normalizeModelUrl(file: string): string {
+  const trimmed = file.replace(/^\.+/, "").replace(/^\/+/, "");
+  if (!trimmed) {
+    return "assets/models/player.glb";
+  }
+  if (trimmed.toLowerCase().startsWith("assets/models/")) {
+    return trimmed;
+  }
+  if (trimmed.toLowerCase().startsWith("models/")) {
+    return `assets/${trimmed}`;
+  }
+  return `assets/models/${trimmed}`;
 }
