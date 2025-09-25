@@ -1,10 +1,12 @@
-import { writeFileSync, mkdirSync, existsSync, cpSync } from "node:fs";
-import { dirname, resolve, relative } from "node:path";
+import { writeFileSync, mkdirSync, existsSync, cpSync, readdirSync } from "node:fs";
+import { dirname, resolve, relative, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const targetDir = resolve(__dirname, "../client/public/assets/models");
 const outputPath = resolve(targetDir, "player.glb");
+const manifestPath = resolve(targetDir, "manifest.json");
+const MANIFEST_EXTENSIONS = new Set([".glb", ".gltf", ".fbx", ".max"]);
 
 const COMPONENTS = {
   SCALAR: 1,
@@ -366,6 +368,41 @@ function syncExternalModels() {
   return copied;
 }
 
+function collectModelFiles(directory, relativeTo = directory) {
+  if (!existsSync(directory)) {
+    return [];
+  }
+  const entries = readdirSync(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectModelFiles(fullPath, relativeTo));
+    } else if (entry.isFile()) {
+      const lower = entry.name.toLowerCase();
+      const dot = lower.lastIndexOf(".");
+      const ext = dot >= 0 ? lower.slice(dot) : "";
+      if (MANIFEST_EXTENSIONS.has(ext)) {
+        const relativePath = relative(relativeTo, fullPath).replace(/\\/g, "/");
+        files.push(relativePath);
+      }
+    }
+  }
+  return files;
+}
+
+function generateManifest() {
+  mkdirSync(targetDir, { recursive: true });
+  const files = collectModelFiles(targetDir);
+  files.sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+  const manifest = {
+    generatedAt: new Date().toISOString(),
+    files,
+  };
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`Обновлён манифест моделей (${files.length})`);
+}
+
 function main() {
   const copied = syncExternalModels();
   if (existsSync(outputPath)) {
@@ -374,13 +411,14 @@ function main() {
     } else {
       console.log("player.glb уже существует, генерация заглушки не требуется");
     }
-    return;
+  } else {
+    const glb = generate();
+    mkdirSync(targetDir, { recursive: true });
+    writeFileSync(outputPath, glb);
+    console.log(`Сгенерирован резервный player.glb (${glb.length} байт)`);
   }
 
-  const glb = generate();
-  mkdirSync(targetDir, { recursive: true });
-  writeFileSync(outputPath, glb);
-  console.log(`Сгенерирован резервный player.glb (${glb.length} байт)`);
+  generateManifest();
 }
 
 main();

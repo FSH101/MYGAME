@@ -11,7 +11,7 @@ import {
 import type { AnimationGroup } from "@babylonjs/core";
 import { disposeInstance, instantiateAsset } from "../assets/AssetLoader";
 import { logger } from "../core/Logger";
-import { getWalkableHeight } from "../terrain/terrain";
+import { getTerrainHeight } from "../terrain/terrain";
 
 const PLAYER_ASSET_KEY = "player";
 const RUN_THRESHOLD = 1.2;
@@ -28,6 +28,7 @@ export class PlayerAvatar {
   private currentGroup?: AnimationGroup;
   private attackUntil = 0;
   private isLocal: boolean;
+  private groundOffset = 0;
 
   constructor(private readonly scene: Scene, opts: { local: boolean }) {
     this.isLocal = opts.local;
@@ -51,6 +52,7 @@ export class PlayerAvatar {
         this.pickClip(["attack", "punch", "hit", "slash", "stab", "swing"]) ?? this.preferredClips.idle;
 
       this.container.meshes.forEach((mesh) => this.prepareMesh(mesh));
+      this.recalculateGroundOffset();
       this.root.scaling = new Vector3(1, 1, 1);
       this.playState("idle");
       logger.info("Модель игрока загружена");
@@ -68,11 +70,15 @@ export class PlayerAvatar {
   }
 
   setPosition(position: Vector3): void {
-    const walkableHeight = getWalkableHeight(position.x, position.z);
-    if (!Number.isNaN(walkableHeight)) {
-      position.y = Math.max(position.y, walkableHeight);
+    const groundHeight = getTerrainHeight(position.x, position.z);
+    let baseHeight = position.y;
+    if (!Number.isFinite(baseHeight)) {
+      baseHeight = Number.isFinite(groundHeight) ? groundHeight : 0;
     }
-    this.root.position.copyFrom(position);
+    if (!Number.isNaN(groundHeight)) {
+      baseHeight = Math.max(baseHeight, groundHeight);
+    }
+    this.root.position.set(position.x, baseHeight + this.groundOffset, position.z);
   }
 
   setRotation(yaw: number): void {
@@ -119,7 +125,7 @@ export class PlayerAvatar {
   }
 
   private prepareMesh(mesh: AbstractMesh): void {
-    mesh.checkCollisions = false;
+    mesh.checkCollisions = true;
     mesh.isPickable = false;
     mesh.receiveShadows = true;
     mesh.alwaysSelectAsActiveMesh = false;
@@ -153,6 +159,30 @@ export class PlayerAvatar {
     );
     this.fallbackMesh.material = material;
     this.fallbackMesh.parent = this.root;
+    this.fallbackMesh.checkCollisions = true;
+    this.recalculateGroundOffset();
+  }
+
+  private recalculateGroundOffset(): void {
+    let minY = Number.POSITIVE_INFINITY;
+    const meshes: AbstractMesh[] = [];
+    if (this.container) {
+      for (const mesh of this.container.meshes) {
+        meshes.push(mesh);
+      }
+    }
+    if (this.fallbackMesh) {
+      meshes.push(this.fallbackMesh);
+    }
+    for (const mesh of meshes) {
+      mesh.computeWorldMatrix(true);
+      const info = mesh.getBoundingInfo();
+      const minimum = info?.boundingBox.minimumWorld.y;
+      if (minimum !== undefined && Number.isFinite(minimum)) {
+        minY = Math.min(minY, minimum);
+      }
+    }
+    this.groundOffset = Number.isFinite(minY) ? -minY : 0;
   }
 
   private resolveClip(state: "idle" | "run" | "attack"): AnimationGroup | undefined {

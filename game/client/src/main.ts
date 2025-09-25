@@ -4,7 +4,7 @@ import { initRenderer } from "./render/initRenderer";
 import type { RendererHandle } from "./render/initRenderer";
 import { GameScene } from "./scenes/gameScene";
 import { LoadingScreen } from "./ui/loading/LoadingScreen";
-import { loadAssets, clearAssetCache } from "./assets/AssetLoader";
+import { loadPlayerAsset, clearAssetCache } from "./assets/AssetLoader";
 import { logger, setupGlobalErrorLogging } from "./core/Logger";
 
 const TOTAL_STAGES = 7;
@@ -55,17 +55,7 @@ async function bootstrap(): Promise<void> {
       name: "Загрузка ассетов",
       run: async (setStageProgress) => {
         if (!scene) throw new Error("Игровая сцена не создана");
-        await loadAssets(
-          scene.getScene(),
-          [
-            {
-              key: "player",
-              type: "gltf",
-              url: "assets/models/player.glb",
-            },
-          ],
-          (progress) => setStageProgress(progress),
-        );
+        await loadPlayerAsset(scene.getScene(), (progress) => setStageProgress(progress));
         setStageProgress(1);
       },
     },
