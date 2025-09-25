@@ -1,0 +1,6 @@
+node_modules/
+game/node_modules/
+game/client/dist/
+game/server/dist/
+*.log
+.DS_Store
