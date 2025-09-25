@@ -30,12 +30,13 @@ if (existsSync(clientDist)) {
   }
 
   fastify.setNotFoundHandler(async (request, reply) => {
-    if (
-      request.method === "GET" &&
-      request.headers.accept?.includes("text/html") &&
-      spaIndex
-    ) {
-      return reply.type("text/html").send(spaIndex);
+    if (spaIndex && (request.method === "GET" || request.method === "HEAD")) {
+      reply.type("text/html");
+      if (request.method === "HEAD") {
+        return reply.send();
+      }
+
+      return reply.send(spaIndex);
     }
 
     return reply.code(404).send({ error: "Not Found" });
