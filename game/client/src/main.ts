@@ -60,8 +60,8 @@ async function bootstrap(): Promise<void> {
           [
             {
               key: "player",
-              type: "max",
-              url: "/assets/models/player.max",
+              type: "gltf",
+              url: "assets/models/player.glb",
             },
           ],
           (progress) => setStageProgress(progress),

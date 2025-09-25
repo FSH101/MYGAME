@@ -15,6 +15,7 @@ import { sendInput } from "../net/sendInput";
 import { setInventoryVisible } from "../ui/hud";
 import type { RendererHandle } from "../render/initRenderer";
 import { ThirdPersonCamera } from "../camera/ThirdPersonCamera";
+import { createTerrain, getTerrainHeight, getWalkableHeight } from "../terrain/terrain";
 
 type TouchHandle = ReturnType<typeof createTouchInput> | null;
 
@@ -30,11 +31,11 @@ export class GameScene {
   private hasInitialCamera = false;
   private inputHandle: TouchHandle = null;
   private networkReady = false;
-
   constructor(private container: HTMLElement, renderer: RendererHandle) {
     this.renderer = renderer;
     this.scene = new Scene(this.renderer.engine);
     this.scene.clearColor = new Color4(0.05, 0.08, 0.12, 1);
+    this.scene.collisionsEnabled = true;
 
     this.cameraRig = new ThirdPersonCamera(this.scene);
     this.controller = new LocalCharacterController(this.cameraRig);
@@ -42,7 +43,7 @@ export class GameScene {
     this.light = new HemisphericLight("sun", new Vector3(0.3, 1, 0.3), this.scene);
     this.light.intensity = 1.1;
 
-    this.generateTerrain();
+    createTerrain(this.scene);
     this.spawnLandmarks();
   }
 
@@ -74,30 +75,22 @@ export class GameScene {
     this.scene.markAllMaterialsAsDirty(1);
   }
 
-  private generateTerrain(): void {
-    const size = 500;
-    const subdivisions = 80;
-    const ground = MeshBuilder.CreateGround("ground", { width: size, height: size, subdivisions }, this.scene);
-    const data = ground.getVerticesData("position")!;
-    for (let i = 0; i < data.length; i += 3) {
-      const x = data[i];
-      const z = data[i + 2];
-      const height = simplex(x * 0.03, z * 0.03) * 4 + simplex(x * 0.1, z * 0.1) * 1.2;
-      data[i + 1] = height;
-    }
-    ground.updateVerticesData("position", data);
-    ground.convertToFlatShadedMesh();
-    ground.checkCollisions = false;
-  }
-
   private spawnLandmarks(): void {
     for (let i = 0; i < 12; i++) {
       const rock = MeshBuilder.CreateCylinder(`rock_${i}`, { diameter: 6 + Math.random() * 3, height: 4 }, this.scene);
-      rock.position = new Vector3((Math.random() - 0.5) * 400, 2, (Math.random() - 0.5) * 400);
+      const x = (Math.random() - 0.5) * 400;
+      const z = (Math.random() - 0.5) * 400;
+      const groundHeight = getTerrainHeight(x, z);
+      rock.position = new Vector3(x, groundHeight + 2, z);
+      rock.checkCollisions = false;
     }
     for (let i = 0; i < 3; i++) {
       const tower = MeshBuilder.CreateBox(`tower_${i}`, { width: 6, height: 24, depth: 6 }, this.scene);
-      tower.position = new Vector3((Math.random() - 0.5) * 300, 12, (Math.random() - 0.5) * 300);
+      const x = (Math.random() - 0.5) * 300;
+      const z = (Math.random() - 0.5) * 300;
+      const groundHeight = getTerrainHeight(x, z);
+      tower.position = new Vector3(x, groundHeight + 12, z);
+      tower.checkCollisions = false;
     }
   }
 
@@ -149,6 +142,10 @@ export class GameScene {
       const transform = this.world.get(entity, "transform");
       if (!transform) continue;
       const targetPos = new Vector3(transform.position[0], transform.position[1], transform.position[2]);
+      const walkableHeight = getWalkableHeight(targetPos.x, targetPos.z);
+      if (!Number.isNaN(walkableHeight) && (!Number.isFinite(targetPos.y) || targetPos.y < walkableHeight)) {
+        targetPos.y = walkableHeight;
+      }
       if (!this.hasInitialCamera) {
         this.cameraRig.setYaw(transform.rotation[1]);
         this.hasInitialCamera = true;
@@ -169,10 +166,6 @@ export class GameScene {
     this.renderer.stop();
     this.inputHandle?.destroy();
   }
-}
-
-function simplex(x: number, y: number): number {
-  return (Math.sin(x * 1.3 + Math.cos(y * 1.7)) + Math.sin(y * 1.9)) * 0.5;
 }
 
 class LocalCharacterController implements ICharacterController {

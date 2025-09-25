@@ -149,22 +149,46 @@ async function loadFBXTemplate(scene: Scene, url: string): Promise<AssetContaine
 
 async function loadMaxTemplate(scene: Scene, url: string): Promise<AssetContainer> {
   const { directory, baseName } = splitPath(url);
-  maxLoader.setResourcePath(directory);
-  maxLoader.setPath(directory);
-  try {
-    const object = await maxLoader.loadAsync(url);
+  const directories = getCandidateDirectories(directory);
 
-    const textures = await prepareTextures(directory, baseName);
-    applyMaterials(object, textures);
-    normalizeModel(object);
-
-    const glb = await exportToGlb(object, []);
-    const container = await SceneLoader.LoadAssetContainerAsync("data:", glb, scene, undefined, ".glb");
-    return container;
-  } catch (error) {
-    logger.warn(`Импорт .max не удался, пробуем резервный GLB для ${baseName}`, error);
-    return loadGlbFallback(scene, directory, baseName);
+  const glbContainer = await tryLoadGlbCandidates(scene, directories, baseName);
+  if (glbContainer) {
+    return glbContainer;
   }
+
+  const fbxContainer = await tryLoadFbxCandidates(scene, directories, baseName);
+  if (fbxContainer) {
+    return fbxContainer;
+  }
+
+  let lastError: unknown = null;
+  const maxCandidates = createCandidateUrls(directories, baseName, [".max"]);
+  for (const candidate of maxCandidates) {
+    const { directory: candidateDir, baseName: candidateBase } = splitPath(candidate);
+    maxLoader.setResourcePath(candidateDir);
+    maxLoader.setPath(candidateDir);
+    try {
+      const object = await maxLoader.loadAsync(candidate);
+
+      const textures = await prepareTextures(candidateDir, candidateBase);
+      applyMaterials(object, textures);
+      normalizeModel(object);
+
+      const glb = await exportToGlb(object, []);
+      const container = await SceneLoader.LoadAssetContainerAsync("data:", glb, scene, undefined, ".glb");
+      return container;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError) {
+    logger.warn(`Импорт .max не удался, пробуем резервный GLB для ${baseName}`, lastError);
+  } else {
+    logger.warn(`Файл .max для ${baseName} не найден, пробуем резервный GLB`);
+  }
+
+  return loadGlbFallback(scene, directories, baseName);
 }
 
 function splitPath(url: string): { directory: string; baseName: string } {
@@ -337,10 +361,122 @@ async function exportToGlb(object: Object3D, animations: AnimationClip[]): Promi
   });
 }
 
-async function loadGlbFallback(scene: Scene, directory: string, baseName: string): Promise<AssetContainer> {
-  const fallbackUrl = `${directory}${baseName}.glb`;
-  const { rootUrl, fileName } = splitUrl(fallbackUrl);
-  return SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene);
+async function loadGlbFallback(scene: Scene, directories: string[], baseName: string): Promise<AssetContainer> {
+  const candidates = createCandidateUrls(directories, baseName, [".glb"]);
+  let lastError: unknown = null;
+  for (const candidate of candidates) {
+    try {
+      const { rootUrl, fileName } = splitUrl(candidate);
+      return await SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error(`Не удалось загрузить резервный GLB ${baseName}`);
+}
+
+function getCandidateDirectories(directory: string): string[] {
+  const directories = new Set<string>();
+  const variants = new Set<string>();
+
+  const normalized = normalizeDirectory(directory);
+  variants.add(normalized);
+
+  if (typeof window !== "undefined") {
+    try {
+      const base = document.baseURI ?? window.location.href;
+      const absolute = new URL(directory || "./", base).pathname;
+      variants.add(normalizeDirectory(absolute));
+    } catch (error) {
+      logger.warn("Не удалось вычислить абсолютный путь для ассетов", error);
+    }
+  }
+
+  for (const variant of variants) {
+    const cleaned = variant.replace(/\\/g, "/");
+    const normalizedVariant = normalizeDirectory(cleaned);
+    if (normalizedVariant) {
+      directories.add(normalizedVariant);
+    }
+
+    const withoutLeadingSlash = cleaned.replace(/^\/+/, "");
+    if (withoutLeadingSlash) {
+      directories.add(normalizeDirectory(withoutLeadingSlash));
+      directories.add(normalizeDirectory(`/${withoutLeadingSlash}`));
+    }
+  }
+
+  const additional = new Set<string>();
+  for (const dir of directories) {
+    const stripped = dir.replace(/^\/+/, "");
+    if (stripped.includes("assets/models/")) {
+      const alternate = stripped.replace("assets/models/", "models/");
+      additional.add(alternate);
+      additional.add(`/${alternate}`);
+    }
+  }
+
+  for (const dir of additional) {
+    const normalizedDir = normalizeDirectory(dir);
+    if (normalizedDir) {
+      directories.add(normalizedDir);
+    }
+  }
+
+  return Array.from(directories);
+}
+
+function normalizeDirectory(directory: string): string {
+  if (!directory) {
+    return "";
+  }
+  let normalized = directory.replace(/\\/g, "/");
+  if (!normalized.endsWith("/")) {
+    normalized += "/";
+  }
+  return normalized;
+}
+
+function createCandidateUrls(directories: string[], baseName: string, extensions: string[]): string[] {
+  const candidates = new Set<string>();
+  const nameVariants = new Set<string>([baseName, baseName.toLowerCase()]);
+  for (const directory of directories) {
+    const dir = normalizeDirectory(directory);
+    for (const name of nameVariants) {
+      for (const ext of extensions) {
+        const variants = [ext, ext.toUpperCase()];
+        for (const variant of variants) {
+          candidates.add(`${dir}${name}${variant}`);
+        }
+      }
+    }
+  }
+  return Array.from(candidates);
+}
+
+async function tryLoadGlbCandidates(scene: Scene, directories: string[], baseName: string): Promise<AssetContainer | null> {
+  const glbCandidates = createCandidateUrls(directories, baseName, [".glb", ".gltf"]);
+  for (const candidate of glbCandidates) {
+    try {
+      const { rootUrl, fileName } = splitUrl(candidate);
+      return await SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene);
+    } catch (error) {
+      // continue to next candidate
+    }
+  }
+  return null;
+}
+
+async function tryLoadFbxCandidates(scene: Scene, directories: string[], baseName: string): Promise<AssetContainer | null> {
+  const fbxCandidates = createCandidateUrls(directories, baseName, [".fbx"]);
+  for (const candidate of fbxCandidates) {
+    try {
+      return await loadFBXTemplate(scene, candidate);
+    } catch (error) {
+      // continue to next candidate
+    }
+  }
+  return null;
 }
 
 function createFailedContainer(scene: Scene, descriptor: AssetDescriptor): AssetContainer {

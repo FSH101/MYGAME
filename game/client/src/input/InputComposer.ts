@@ -2,8 +2,9 @@ import type { NetInputFrame } from "../shared/types";
 import type { IActions, ICharacterController, INetInputSink, InputSettings, MoveCurve } from "./types";
 
 const SEND_RATE = 1 / 15; // 15 Hz snapshots
-const MOVE_SMOOTH = 0.24;
-const LOOK_SMOOTH = 0.18;
+const MOVE_SMOOTH_RATE = 10.5;
+const LOOK_SMOOTH_RATE = 12.5;
+const MAX_FRAME_DT = 1 / 24; // clamp to ~41ms to stay in sync with refresh cycles
 
 export class InputComposer {
   private moveTarget = { x: 0, z: 0 };
@@ -99,23 +100,30 @@ export class InputComposer {
   }
 
   update(dt: number): void {
-    this.accumulator += dt;
+    const clampedDt = Math.min(dt, MAX_FRAME_DT);
+    this.accumulator += clampedDt;
 
     if (this.autoRun) {
       this.moveTarget = { ...this.autoRunVector };
       this.sprintTarget = true;
     }
 
-    this.moveCurrent.x = lerp(this.moveCurrent.x, this.moveTarget.x, MOVE_SMOOTH);
-    this.moveCurrent.z = lerp(this.moveCurrent.z, this.moveTarget.z, MOVE_SMOOTH);
+    const moveBlend = smoothingFactor(MOVE_SMOOTH_RATE, clampedDt);
+    this.moveCurrent.x = lerp(this.moveCurrent.x, this.moveTarget.x, moveBlend);
+    this.moveCurrent.z = lerp(this.moveCurrent.z, this.moveTarget.z, moveBlend);
     if (Math.abs(this.moveCurrent.x) < 0.001) this.moveCurrent.x = 0;
     if (Math.abs(this.moveCurrent.z) < 0.001) this.moveCurrent.z = 0;
 
-    this.sprintCurrent = lerp(this.sprintCurrent ? 1 : 0, this.sprintTarget ? 1 : 0, MOVE_SMOOTH) > 0.5;
+    this.sprintCurrent = lerp(
+      this.sprintCurrent ? 1 : 0,
+      this.sprintTarget ? 1 : 0,
+      moveBlend,
+    ) > 0.5;
 
     if (this.yawPending || this.pitchPending) {
-      const yawStep = this.yawPending * LOOK_SMOOTH;
-      const pitchStep = this.pitchPending * LOOK_SMOOTH;
+      const lookBlend = smoothingFactor(LOOK_SMOOTH_RATE, clampedDt);
+      const yawStep = this.yawPending * lookBlend;
+      const pitchStep = this.pitchPending * lookBlend;
       this.controller.addYaw(yawStep);
       this.controller.addPitch(pitchStep);
       this.yawFrame += yawStep;
@@ -196,6 +204,11 @@ function applyMoveCurve(magnitude: number, curve: MoveCurve): number {
     return Math.pow(magnitude, 0.7);
   }
   return magnitude;
+}
+
+function smoothingFactor(rate: number, dt: number): number {
+  if (dt <= 0) return 0;
+  return 1 - Math.exp(-rate * dt);
 }
 
 function lerp(a: number, b: number, t: number): number {

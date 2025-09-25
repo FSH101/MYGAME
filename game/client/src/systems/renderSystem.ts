@@ -3,6 +3,7 @@ import { Color3, MeshBuilder, StandardMaterial, Vector3 } from "@babylonjs/core"
 import type { World } from "../ecs/world";
 import type { TransformComponent, PlayerComponent, ResourceComponent, AIComponent, HeatComponent } from "../components";
 import { PlayerAvatar } from "../game/PlayerAvatar";
+import { getTerrainHeight, getWalkableHeight } from "../terrain/terrain";
 
 const meshCache = new Map<number, AbstractMesh>();
 const resourceMaterials = new Map<string, StandardMaterial>();
@@ -41,6 +42,10 @@ export function updateRender(scene: Scene, world: World): void {
       }
       visual.avatar.setLocal(player.local);
       tempVec.set(transform.position[0], transform.position[1], transform.position[2]);
+      const targetHeight = getWalkableHeight(tempVec.x, tempVec.z);
+      if (!Number.isNaN(targetHeight) && (!Number.isFinite(tempVec.y) || tempVec.y < targetHeight)) {
+        tempVec.y = targetHeight;
+      }
       visual.avatar.setPosition(tempVec);
       visual.avatar.setRotation(transform.rotation[1]);
       const dt = Math.max(0.016, (now - visual.lastTimestamp) / 1000);
@@ -73,6 +78,10 @@ export function updateRender(scene: Scene, world: World): void {
       meshCache.set(entity, mesh);
     }
     mesh.position = new Vector3(transform.position[0], transform.position[1], transform.position[2]);
+    const groundHeight = getTerrainHeight(mesh.position.x, mesh.position.z);
+    if (!Number.isNaN(groundHeight) && Math.abs(mesh.position.y - groundHeight) < 5) {
+      mesh.position.y = groundHeight;
+    }
     mesh.rotationQuaternion = null;
     mesh.rotation.y = transform.rotation[1];
     const resource = world.get<ResourceComponent>(entity, "resource");
