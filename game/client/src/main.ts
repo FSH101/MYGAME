@@ -8,6 +8,7 @@ import { loadPlayerAsset, clearAssetCache } from "./assets/AssetLoader";
 import { logger, setupGlobalErrorLogging } from "./core/Logger";
 import { MapEditorApp } from "./editors/map/MapEditorApp";
 import { CharacterEditorApp } from "./editors/characters/CharacterEditorApp";
+import { ensureDebugModePanel } from "./ui/debug/DebugModePanel";
 
 const TOTAL_STAGES = 7;
 
@@ -17,6 +18,8 @@ async function bootstrap(): Promise<void> {
 
   const root = document.getElementById("game-root");
   if (!root) throw new Error("Не найден корневой элемент для игры");
+
+  ensureDebugModePanel();
 
   const mode = new URL(window.location.href).searchParams.get("mode");
   if (mode === "map-editor") {

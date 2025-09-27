@@ -15,11 +15,20 @@ import { v4 as uuidv4 } from "@lukeed/uuid";
 import type { RendererHandle } from "../../render/initRenderer";
 import { initRenderer } from "../../render/initRenderer";
 import { ModelLibrary, type ModelInstance, type ModelTemplate } from "../common/ModelLibrary";
+import {
+  describeQuest,
+  ensureQuestScript,
+  parseQuestScript,
+  type QuestScript,
+  type QuestScriptWithMeta,
+} from "../common/QuestScripts";
 
 interface MapObject {
   id: string;
   instance: ModelInstance;
   template: ModelTemplate;
+  questDialogEnabled: boolean;
+  questScript?: QuestScriptWithMeta;
 }
 
 interface ExportedMapObject {
@@ -28,6 +37,9 @@ interface ExportedMapObject {
   position: [number, number, number];
   rotation: [number, number, number];
   scale: [number, number, number];
+  questDialogEnabled?: boolean;
+  questScript?: QuestScript;
+  questScriptSource?: string;
 }
 
 interface ExportedMapData {
@@ -48,6 +60,12 @@ interface PanelRefs {
   exportButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
   clearSelectionButton: HTMLButtonElement;
+  questToggle: HTMLInputElement;
+  questConfig: HTMLDivElement;
+  questSummary: HTMLDivElement;
+  questUploadButton: HTMLButtonElement;
+  questClearButton: HTMLButtonElement;
+  questFileInput: HTMLInputElement;
 }
 
 export class MapEditorApp {
@@ -192,7 +210,7 @@ export class MapEditorApp {
       const template = this.library.getTemplate(modelId);
       if (!template) throw new Error("Шаблон не найден после создания");
       const id = uuidv4();
-      const mapObject: MapObject = { id, instance, template };
+      const mapObject: MapObject = { id, instance, template, questDialogEnabled: false };
       this.objects.set(id, mapObject);
       this.updatePlacements();
       this.setSelectedObject(id);
@@ -215,6 +233,7 @@ export class MapEditorApp {
       this.gizmos.attachToMesh(null);
       this.refs.deleteButton.disabled = true;
       this.refs.clearSelectionButton.disabled = true;
+      this.updateQuestSection();
       return;
     }
     const object = this.objects.get(id);
@@ -222,18 +241,107 @@ export class MapEditorApp {
       this.gizmos.attachToMesh(null);
       this.refs.deleteButton.disabled = true;
       this.refs.clearSelectionButton.disabled = true;
+      this.updateQuestSection();
       return;
     }
     this.gizmos.attachToMesh(object.instance.anchor);
     this.refs.deleteButton.disabled = false;
     this.refs.clearSelectionButton.disabled = false;
     this.highlightPlacement(id);
+    this.updateQuestSection();
   }
 
   private highlightPlacement(id: string): void {
     for (const element of Array.from(this.refs.placementList.querySelectorAll<HTMLDivElement>(".placement"))) {
       element.classList.toggle("selected", element.dataset.id === id);
     }
+  }
+
+  private getSelectedObject(): MapObject | null {
+    if (!this.selectedObjectId) {
+      return null;
+    }
+    return this.objects.get(this.selectedObjectId) ?? null;
+  }
+
+  private updateQuestSection(): void {
+    const refs = this.refs;
+    const object = this.getSelectedObject();
+    if (!object) {
+      refs.questToggle.disabled = true;
+      refs.questToggle.checked = false;
+      refs.questConfig.classList.add("hidden");
+      refs.questSummary.textContent = "Выберите объект для настройки диалога";
+      refs.questSummary.classList.add("empty");
+      return;
+    }
+    refs.questToggle.disabled = false;
+    refs.questToggle.checked = object.questDialogEnabled;
+    refs.questConfig.classList.toggle("hidden", !object.questDialogEnabled);
+    if (!object.questDialogEnabled) {
+      refs.questSummary.textContent = "Диалог отключён";
+      refs.questSummary.classList.add("empty");
+      return;
+    }
+    if (!object.questScript) {
+      refs.questSummary.textContent = "Сценарий не загружен";
+      refs.questSummary.classList.add("empty");
+      return;
+    }
+    this.renderQuestSummary(object.questScript);
+  }
+
+  private renderQuestSummary(script: QuestScriptWithMeta): void {
+    const summary = this.refs.questSummary;
+    summary.classList.remove("empty");
+    summary.innerHTML = "";
+
+    const title = document.createElement("div");
+    title.textContent = `Заголовок: ${script.dialogTitle}`;
+    summary.appendChild(title);
+
+    const source = document.createElement("div");
+    source.textContent = `Источник: ${script.sourceName}`;
+    summary.appendChild(source);
+
+    const list = document.createElement("ol");
+    script.quests.forEach((quest) => {
+      const item = document.createElement("li");
+      item.textContent = describeQuest(quest);
+      if (quest.description) {
+        const desc = document.createElement("div");
+        desc.textContent = quest.description;
+        desc.className = "quest-description";
+        item.appendChild(desc);
+      }
+      list.appendChild(item);
+    });
+    summary.appendChild(list);
+  }
+
+  private async handleQuestFiles(files: FileList | File[]): Promise<void> {
+    const object = this.getSelectedObject();
+    if (!object) {
+      this.log("Сначала выберите объект на карте");
+      return;
+    }
+    const file = files[0];
+    if (!file) {
+      return;
+    }
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text) as unknown;
+      const script = parseQuestScript(data, file.name);
+      object.questScript = script;
+      object.questDialogEnabled = true;
+      this.log(
+        `Сценарий квестов ${file.name} привязан к объекту ${object.template.displayName} (квестов: ${script.quests.length})`,
+      );
+    } catch (error) {
+      this.logError(error);
+    }
+    this.updateQuestSection();
   }
 
   private updatePlacements(): void {
@@ -339,6 +447,10 @@ export class MapEditorApp {
           cursor: pointer;
           transition: transform 0.15s ease;
         }
+        .map-editor button.secondary {
+          background: rgba(255, 255, 255, 0.08);
+          color: #f4e3c2;
+        }
         .map-editor button:disabled {
           opacity: 0.5;
           cursor: not-allowed;
@@ -349,6 +461,61 @@ export class MapEditorApp {
         .map-editor .selected-model {
           font-size: 0.85rem;
           opacity: 0.85;
+        }
+        .map-editor .quest-toggle {
+          display: flex;
+          gap: 0.5rem;
+          align-items: center;
+          font-size: 0.9rem;
+        }
+        .map-editor .quest-toggle input {
+          width: 18px;
+          height: 18px;
+        }
+        .map-editor .quest-config {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          padding: 0.5rem 0.6rem;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.05);
+        }
+        .map-editor .quest-config.hidden {
+          display: none;
+        }
+        .map-editor .quest-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+        .map-editor .quest-summary {
+          background: rgba(0, 0, 0, 0.35);
+          border-radius: 8px;
+          padding: 0.5rem;
+          font-size: 0.82rem;
+          line-height: 1.4;
+          max-height: 120px;
+          overflow-y: auto;
+        }
+        .map-editor .quest-summary.empty {
+          opacity: 0.75;
+          font-style: italic;
+        }
+        .map-editor .quest-summary ol {
+          margin: 0.35rem 0 0;
+          padding-left: 1.2rem;
+        }
+        .map-editor .quest-summary li {
+          margin-bottom: 0.35rem;
+        }
+        .map-editor .quest-summary li:last-child {
+          margin-bottom: 0;
+        }
+        .map-editor .quest-summary .quest-description {
+          display: block;
+          margin-top: 0.15rem;
+          font-size: 0.75rem;
+          opacity: 0.8;
         }
       </style>
       <div class="panel">
@@ -364,6 +531,21 @@ export class MapEditorApp {
           <div class="actions">
             <button class="clear-selection" disabled>Снять выделение</button>
             <button class="delete" disabled>Удалить объект</button>
+          </div>
+        </div>
+        <div class="section">
+          <h2>Интерактивность объекта</h2>
+          <label class="quest-toggle">
+            <input type="checkbox" class="quest-enabled" />
+            Открывать диалог квестов при взаимодействии
+          </label>
+          <div class="quest-config hidden">
+            <div class="quest-actions">
+              <button class="quest-upload" type="button">Загрузить сценарий (JSON)</button>
+              <button class="quest-clear secondary" type="button">Очистить сценарий</button>
+            </div>
+            <div class="quest-summary empty">Сценарий не загружен</div>
+            <input class="quest-file" type="file" accept=".json" hidden />
           </div>
         </div>
         <div class="section">
@@ -392,6 +574,12 @@ export class MapEditorApp {
       exportButton: root.querySelector<HTMLButtonElement>(".export")!,
       importButton: root.querySelector<HTMLButtonElement>(".import")!,
       clearSelectionButton: root.querySelector<HTMLButtonElement>(".clear-selection")!,
+      questToggle: root.querySelector<HTMLInputElement>(".quest-enabled")!,
+      questConfig: root.querySelector<HTMLDivElement>(".quest-config")!,
+      questSummary: root.querySelector<HTMLDivElement>(".quest-summary")!,
+      questUploadButton: root.querySelector<HTMLButtonElement>(".quest-upload")!,
+      questClearButton: root.querySelector<HTMLButtonElement>(".quest-clear")!,
+      questFileInput: root.querySelector<HTMLInputElement>(".quest-file")!,
     };
 
     panel.fileInput.addEventListener("change", async () => {
@@ -435,6 +623,56 @@ export class MapEditorApp {
     });
 
     panel.clearSelectionButton.addEventListener("click", () => this.setSelectedObject(null));
+
+    panel.questToggle.addEventListener("change", () => {
+      const object = this.getSelectedObject();
+      if (!object) {
+        panel.questToggle.checked = false;
+        return;
+      }
+      object.questDialogEnabled = panel.questToggle.checked;
+      if (!panel.questToggle.checked) {
+        if (object.questScript) {
+          object.questScript = undefined;
+          this.log("Диалог квестов отключён для выбранного объекта");
+        }
+      } else {
+        this.log("Диалог квестов включён: загрузите JSON-сценарий или выберите новый файл");
+      }
+      this.updateQuestSection();
+    });
+
+    panel.questUploadButton.addEventListener("click", () => {
+      if (panel.questToggle.disabled) {
+        this.log("Сначала выберите объект на карте");
+        return;
+      }
+      panel.questFileInput.click();
+    });
+
+    panel.questFileInput.addEventListener("change", async () => {
+      const files = panel.questFileInput.files;
+      if (!files || files.length === 0) {
+        return;
+      }
+      await this.handleQuestFiles(files);
+      panel.questFileInput.value = "";
+    });
+
+    panel.questClearButton.addEventListener("click", () => {
+      const object = this.getSelectedObject();
+      if (!object) {
+        this.log("Сначала выберите объект на карте");
+        return;
+      }
+      if (object.questScript) {
+        object.questScript = undefined;
+        this.log("Сценарий квестов удалён из объекта");
+      }
+      this.updateQuestSection();
+    });
+
+    this.updateQuestSection();
 
     return panel;
   }
@@ -481,13 +719,27 @@ export class MapEditorApp {
     const objects: ExportedMapObject[] = [];
     for (const object of this.objects.values()) {
       const anchor = object.instance.anchor;
-      objects.push({
+      const exported: ExportedMapObject = {
         id: object.id,
         modelFile: object.template.fileName,
         position: [anchor.position.x, anchor.position.y, anchor.position.z],
         rotation: [anchor.rotation.x, anchor.rotation.y, anchor.rotation.z],
         scale: [anchor.scaling.x, anchor.scaling.y, anchor.scaling.z],
-      });
+        questDialogEnabled: object.questDialogEnabled,
+      };
+      if (object.questDialogEnabled && object.questScript) {
+        exported.questScript = {
+          dialogTitle: object.questScript.dialogTitle,
+          quests: object.questScript.quests.map((quest) => ({
+            id: quest.id,
+            title: quest.title,
+            description: quest.description,
+            requirement: { ...quest.requirement },
+          })),
+        };
+        exported.questScriptSource = object.questScript.sourceName;
+      }
+      objects.push(exported);
     }
     return {
       version: 1,
@@ -513,7 +765,22 @@ export class MapEditorApp {
       instance.anchor.position.set(item.position[0], item.position[1], item.position[2]);
       instance.anchor.rotation.set(item.rotation[0], item.rotation[1], item.rotation[2]);
       instance.anchor.scaling.set(item.scale[0], item.scale[1], item.scale[2]);
-      const mapObject: MapObject = { id: item.id ?? uuidv4(), instance, template };
+      const mapObject: MapObject = {
+        id: item.id ?? uuidv4(),
+        instance,
+        template,
+        questDialogEnabled: Boolean(item.questDialogEnabled ?? !!item.questScript),
+      };
+      if (item.questScript) {
+        try {
+          const sourceName = item.questScriptSource ?? template.fileName;
+          const script = ensureQuestScript(item.questScript, sourceName);
+          mapObject.questScript = { ...script, sourceName };
+        } catch (error) {
+          this.logError(error);
+          mapObject.questDialogEnabled = false;
+        }
+      }
       this.objects.set(mapObject.id, mapObject);
     }
     this.updatePlacements();
