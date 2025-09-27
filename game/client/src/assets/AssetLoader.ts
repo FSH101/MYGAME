@@ -407,7 +407,10 @@ async function exportToGlb(object: Object3D, animations: AnimationClip[]): Promi
   });
 }
 
-async function loadContainerFromGlbData(scene: Scene, data: ArrayBuffer | Blob): Promise<AssetContainer> {
+export async function loadContainerFromGlbData(
+  scene: Scene,
+  data: ArrayBuffer | Blob,
+): Promise<AssetContainer> {
   const blob = data instanceof Blob ? data : new Blob([data], { type: "model/gltf-binary" });
   const objectUrl = URL.createObjectURL(blob);
   try {

@@ -6,6 +6,8 @@ import { GameScene } from "./scenes/gameScene";
 import { LoadingScreen } from "./ui/loading/LoadingScreen";
 import { loadPlayerAsset, clearAssetCache } from "./assets/AssetLoader";
 import { logger, setupGlobalErrorLogging } from "./core/Logger";
+import { MapEditorApp } from "./editors/map/MapEditorApp";
+import { CharacterEditorApp } from "./editors/characters/CharacterEditorApp";
 
 const TOTAL_STAGES = 7;
 
@@ -15,6 +17,20 @@ async function bootstrap(): Promise<void> {
 
   const root = document.getElementById("game-root");
   if (!root) throw new Error("Не найден корневой элемент для игры");
+
+  const mode = new URL(window.location.href).searchParams.get("mode");
+  if (mode === "map-editor") {
+    logger.info("Запущен режим визуального редактора карты");
+    root.innerHTML = "";
+    new MapEditorApp(root);
+    return;
+  }
+  if (mode === "character-editor") {
+    logger.info("Запущен режим редактора персонажей");
+    root.innerHTML = "";
+    new CharacterEditorApp(root);
+    return;
+  }
 
   const loading = new LoadingScreen(document.body);
   loading.setProgress(0);
