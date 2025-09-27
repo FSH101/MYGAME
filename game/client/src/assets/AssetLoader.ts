@@ -191,8 +191,7 @@ async function loadFBXTemplate(scene: Scene, url: string): Promise<AssetContaine
   normalizeModel(object);
 
   const glb = await exportToGlb(object, animations);
-  const container = await SceneLoader.LoadAssetContainerAsync("data:", glb, scene, undefined, ".glb");
-  return container;
+  return await loadContainerFromGlbData(scene, glb);
 }
 
 async function loadMaxTemplate(scene: Scene, url: string): Promise<AssetContainer> {
@@ -223,8 +222,7 @@ async function loadMaxTemplate(scene: Scene, url: string): Promise<AssetContaine
       normalizeModel(object);
 
       const glb = await exportToGlb(object, []);
-      const container = await SceneLoader.LoadAssetContainerAsync("data:", glb, scene, undefined, ".glb");
-      return container;
+      return await loadContainerFromGlbData(scene, glb);
     } catch (error) {
       lastError = error;
     }
@@ -407,6 +405,19 @@ async function exportToGlb(object: Object3D, animations: AnimationClip[]): Promi
       { binary: true, animations },
     );
   });
+}
+
+export async function loadContainerFromGlbData(
+  scene: Scene,
+  data: ArrayBuffer | Blob,
+): Promise<AssetContainer> {
+  const blob = data instanceof Blob ? data : new Blob([data], { type: "model/gltf-binary" });
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    return await SceneLoader.LoadAssetContainerAsync("", objectUrl, scene, undefined, ".glb");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 async function loadGlbFallback(scene: Scene, directories: string[], baseName: string): Promise<AssetContainer> {
